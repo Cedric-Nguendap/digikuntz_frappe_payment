@@ -33,7 +33,7 @@ frappe.ui.form.on('Payment Request', {
                         
                         // Appel de la méthode Python
                         frappe.call({
-                            method: "frappe_digikuntz_flutterwave.api.payment.initiate_momo_push",
+                            method: "digikuntz_frappe_payment.api.payment.initiate_momo_push",
                             args: {
                                 payment_request_name: frm.doc.name,
                                 phone_number: values.phone,
@@ -67,12 +67,12 @@ frappe.ui.form.on('Payment Request', {
     }
 });
 
-verify_paiement_momo = function(frm) {
+const verify_paiement_momo = function(frm) {
     frappe.dom.freeze(__('En attente de la saisie du code PIN sur le téléphone du client...'));
 
     let interval = setInterval(() => {
         frappe.call({
-            method: "frappe_digikuntz_flutterwave.api.payment.check_momo_push",
+            method: "digikuntz_frappe_payment.api.payment.check_momo_push",
             args: {
                 payment_request_name: frm.doc.name
             },

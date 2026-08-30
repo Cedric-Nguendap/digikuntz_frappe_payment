@@ -1,6 +1,6 @@
 import requests
 import frappe
-import frappe_digikuntz_flutterwave.services.utils as utils_func
+import digikuntz_frappe_payment.services.utils as utils_func
 
 
 class FlutterwaveClient:
@@ -10,6 +10,19 @@ class FlutterwaveClient:
         self.base_url = "https://api.flutterwave.com/v3"
         self.secret_key = self.settings.get_password("secret_key")
 
+    def validate(self):
+        if not self.settings.enable_flutterwave:
+            frappe.throw(
+                msg="Flutterwave est désactivé. Veuillez l'activer dans Flutterwave Settings.",
+                title="Flutterwave Inactif",
+                exc=frappe.ValidationError
+            )
+        if not self.secret_key or not self.settings.public_key:
+            frappe.throw(
+                msg="Flutterwave n'est pas configuré. Secret Key et Public Key sont requis.",
+                title="Configuration manquante",
+                exc=frappe.ValidationError
+            )
 
     @property
     def headers(self):
@@ -18,17 +31,23 @@ class FlutterwaveClient:
             "Content-Type": "application/json"
         }
 
-    def initialize_web_payment(
-        self,
-        amount,
-        email,
-        tx_ref,
-        redirect_url,
-        currency="XAF",
-        company = None,
-        customer_name=None
-    ):
-    
+    def _post(self, endpoint, payload):
+        try:
+            response = requests.post(f"{self.base_url}{endpoint}", json=payload, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            return {**response.json(), "status_code": "success"}
+        except requests.exceptions.RequestException as e:
+            return {"status_code": "error", "message": str(e)}
+
+    def _get(self, endpoint, params=None):
+        try:
+            response = requests.get(f"{self.base_url}{endpoint}", params=params, headers=self.headers, timeout=30)
+            response.raise_for_status()
+            return {**response.json(), "status_code": "success"}
+        except requests.exceptions.RequestException as e:
+            return {"status_code": "error", "message": str(e)}
+
+    def initialize_web_payment(self, amount, email, tx_ref, redirect_url, currency="XAF", company=None, customer_name=None):
         payload = {
             "tx_ref": tx_ref,
             "amount": amount,
@@ -44,47 +63,13 @@ class FlutterwaveClient:
             }
         }
 
-        if not utils_func.can_use_flutterwave():
-            frappe.throw(
-                msg="Impossible de procéder au paiement car le composant Flutterwave est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="Composant Inactif",
-                exc=frappe.ValidationError
-            )
-
         if utils_func.should_use_subaccount(company):
-            id_sous_compte = frappe.get_doc("Flutterwave SubAccount", company.custom_sous_compte_par_defaut).subaccount_id
+            subaccount_id = frappe.get_doc("Flutterwave SubAccount", company.custom_sous_compte_par_defaut).subaccount_id
+            payload["subaccounts"] = [{"id": subaccount_id}]
 
-            payload["subaccounts"]= [
-                {
-                    "id": id_sous_compte
-                }
-            ]
-        
-        try:
-            response = requests.post(
-                f"{self.base_url}/payments",
-                json=payload,
-                headers=self.headers
-            )            
-            data = {**response.json(), "status_code": "success"}
-        except requests.exceptions.HTTPError as http_err:
-            data = {"status_code": "error", "message": str(http_err)}
-        return data
+        return self._post("/payments", payload)
 
-    def initialize_mobile_money_payment(
-        self,
-        amount,
-        email,
-        tx_ref,
-        redirect_url,
-        phone_number,
-        network,
-        country="CM",
-        currency="XAF",
-        company = None,
-        customer_name=None
-    ):
-    
+    def initialize_mobile_money_payment(self, amount, email, tx_ref, redirect_url, phone_number, network, country="CM", currency="XAF", company=None, customer_name=None):
         payload = {
             "tx_ref": tx_ref,
             "amount": amount,
@@ -97,73 +82,25 @@ class FlutterwaveClient:
             "redirect_url": redirect_url
         }
 
-        if not utils_func.can_use_flutterwave():
-            frappe.throw(
-                msg="Impossible de procéder au paiement car le composant Flutterwave est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="Flutterwave Inactif",
-                exc=frappe.ValidationError
-            )
-
         if utils_func.should_use_subaccount(company):
-            id_sous_compte = frappe.get_doc("Flutterwave SubAccount", company.custom_sous_compte_par_defaut).subaccount_id
-            payload["subaccounts"]= [
-                {
-                    "id": id_sous_compte
-                }
-            ]
+            subaccount_id = frappe.get_doc("Flutterwave SubAccount", company.custom_sous_compte_par_defaut).subaccount_id
+            payload["subaccounts"] = [{"id": subaccount_id}]
 
-        try:
-            response = requests.post(
-                f"{self.base_url}/charges?type=mobile_money_franco",
-                json=payload,
-                headers=self.headers
-            )            
-            data = {**response.json(), "status_code": "success"}
-        except requests.exceptions.HTTPError as http_err:
-            data = {"status_code": "error", "message": str(http_err)}
-        return data
-    
+        return self._post("/charges?type=mobile_money_franco", payload)
 
-    def verify_transaction(self,transaction_id):
-        try:
-            if not utils_func.can_use_flutterwave():
-                frappe.throw(
-                    msg="Impossible de procéder a la vérification du paiement car le composant Flutterwave est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                    title="Flutterwave Inactif",
-                    exc=frappe.ValidationError
-                )
+    def verify_transaction(self, transaction_id):
+        return self._get(f"/transactions/{transaction_id}/verify")
 
-            response = requests.get(
-                f"{self.base_url}/transactions/{transaction_id}/verify",
-                headers=self.headers
-            )
-            data = {**response.json(), "status_code": "success"}
-        except requests.exceptions.HTTPError as http_err:
-            data = {"status_code": "error", "message": str(http_err)}
+    def verify_transaction_by_reference(self, reference):
+        return self._get("/transactions/verify_by_reference", params={"tx_ref": reference})
 
-        return data
-    
+    def verify_webhook_signature(self, payload, signature):
+        secret_hash = self.settings.get_password("webhook_secret") or ""
+        if secret_hash and signature != secret_hash:
+            return False
+        return True
 
-    def verify_transaction_by_reference(self,reference):
-        try:
-            if not utils_func.can_use_flutterwave():
-                frappe.throw(
-                    msg="Impossible de procéder a la vérification du paiement car le composant Flutterwave est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                    title="Flutterwave Inactif",
-                    exc=frappe.ValidationError
-                )
-            response = requests.get(
-                f"{self.base_url}/transactions/verify_by_reference?tx_ref={reference}",
-                headers=self.headers
-            )
-            data = {**response.json(), "status_code": "success"}
-        except requests.exceptions.HTTPError as http_err:
-            data = {"status_code": "error", "message": str(http_err)}
-
-        return data
-    
-
-    def create_subaccount(self, company,account_bank,account_number,business_email):
+    def create_subaccount(self, company, account_bank, account_number, business_email):
         payload = {
             "account_bank": account_bank,
             "account_number": account_number,
@@ -172,61 +109,13 @@ class FlutterwaveClient:
             "split_type": "percentage",
             "split_value": 0
         }
-        if not utils_func.can_use_flutterwave():
-            frappe.throw(
-                msg="Impossible de procéder a la création du sous-compte car le composant Flutterwave est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="Flutterwave Inactif",
-                exc=frappe.ValidationError
-            )
-        response = requests.post(
-            f"{self.base_url}/subaccounts",
-            json=payload,
-            headers=self.headers
-        )
-        return response.json()
-    
+        return self._post("/subaccounts", payload)
+
     def get_all_subaccount(self):
-        if not utils_func.can_use_flutterwave():
-            frappe.throw(
-                msg="Impossible de procéder a la récupération des sous-comptes car le composant Flutterwave est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="Flutterwave Inactif",
-                exc=frappe.ValidationError
-            )
-        response = requests.get(
-            f"{self.base_url}/subaccounts",
-            headers=self.headers
-        )
-        return response.json()
-    
-    def get_subaccount_infos(self,subaccount_id):
-        if not utils_func.can_use_flutterwave():
-            frappe.throw(
-                msg="Impossible de récupérer les informations du sous-comptes car le composant Flutterwave est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="Flutterwave Inactif",
-                exc=frappe.ValidationError
-            )
-        
-        payload = {
-            "id": subaccount_id
-        }
+        return self._get("/subaccounts")
 
-        response  = requests.get(
-             f"{self.base_url}/subaccounts",
-            json=payload,
-            headers=self.headers
-        )
-        return response.json()
-
+    def get_subaccount_infos(self, subaccount_id):
+        return self._get(f"/subaccounts/{subaccount_id}")
 
     def get_banks(self, country):
-
-        if not utils_func.can_use_flutterwave():
-            frappe.throw(
-                msg="Impossible de procéder a la récupération des banques car le composant Flutterwave est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="Flutterwave Inactif",
-                exc=frappe.ValidationError
-            )
-        response = requests.get(f"{self.base_url}/banks/{country}",headers=self.headers)
-
-        return response.json()
-    
+        return self._get(f"/banks/{country}")

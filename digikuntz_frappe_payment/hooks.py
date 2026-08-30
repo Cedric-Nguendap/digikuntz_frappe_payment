@@ -8,7 +8,7 @@ app_license = "mit"
 # Apps
 # ------------------
 
-# required_apps = []
+required_apps = ["frappe_digikuntz_flutterwave", "frappe_digikuntz_pawapay"]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -27,8 +27,8 @@ app_license = "mit"
 # include js, css files in header of desk.html
 # app_include_css = "/assets/digikuntz_frappe_payment/css/digikuntz_frappe_payment.css"
 app_include_js = [
-    "/assets/frappe_digikuntz_flutterwave/js/payment_request.js",
-    "/assets/frappe_digikuntz_flutterwave/js/sales_invoice.js"
+    "/assets/digikuntz_frappe_payment/js/payment_request.js",
+    "/assets/digikuntz_frappe_payment/js/sales_invoice.js"
 ]
 
 # include js, css files in header of web template
@@ -97,7 +97,8 @@ doctype_js = {
 # ------------
 
 # before_uninstall = "digikuntz_frappe_payment.uninstall.before_uninstall"
-after_uninstall = "digikuntz_frappe_payment.setup.install.after_install"
+after_install = "digikuntz_frappe_payment.setup.install.after_install"
+after_uninstall = "digikuntz_frappe_payment.setup.install.after_uninstall"
 
 # Integration Setup
 # ------------------

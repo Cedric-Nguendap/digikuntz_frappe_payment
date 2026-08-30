@@ -2,10 +2,28 @@ import frappe
 
 def after_install():
     create_payment_gateway()
-
     create_mode_of_payment()
     create_payment_gateway_account()
-    print("End of installation script Flutterwave Integration")
+    print("End of installation script Digikuntz Frappe Payment")
+
+
+def after_uninstall():
+    for doctype, name in [
+        ("Payment Gateway Account", {"payment_gateway": "Flutterwave Gateway"}),
+        ("Payment Gateway", "Flutterwave Gateway"),
+        ("Mode of Payment", "Flutterwave"),
+    ]:
+        try:
+            if isinstance(name, dict):
+                existing = frappe.db.get_value(doctype, name, "name")
+                if existing:
+                    frappe.delete_doc(doctype, existing, ignore_permissions=True)
+            elif frappe.db.exists(doctype, name):
+                frappe.delete_doc(doctype, name, ignore_permissions=True)
+        except Exception:
+            pass
+    frappe.db.commit()
+    print("Digikuntz Frappe Payment uninstalled")
 
 
 def create_mode_of_payment():

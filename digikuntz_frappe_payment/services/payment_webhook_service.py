@@ -1,20 +1,40 @@
 import json
+import hmac
+import hashlib
 import frappe
 
-from frappe_digikuntz_flutterwave.integrations.payment_client_factory import (
+from digikuntz_frappe_payment.integrations.payment_client_factory import (
     PaymentClientFactory
 )
 
 from erpnext.accounts.doctype.payment_entry.payment_entry import get_payment_entry
 
 
-class FlutterwaveWebhookService:
+class PaymentWebhookService:
 
-    def __init__(self):
-        self.payment_mode = PaymentClientFactory.get_payment_client()
-        self.settings = self.payment_mode["mode"]   
+    def __init__(self, company=None):
+        self.payment_mode = PaymentClientFactory.get_payment_client(company=company)
+        self.mode_name = self.payment_mode["mode"]
         self.client = self.payment_mode["client"]
 
+
+    def handle_webhook(self, payload, signature):
+        try:
+            if not self.client.verify_webhook_signature(payload, signature):
+                frappe.logger().warning("Webhook signature mismatch")
+                return {"status": "error", "message": "Invalid signature"}
+
+            transaction = json.loads(payload)
+            event = transaction.get("event", "")
+
+            if event == "charge.completed":
+                self.process_successful_payment(transaction)
+                return {"status": "success"}
+
+            return {"status": "ignored", "event": event}
+        except Exception as e:
+            frappe.log_error(frappe.get_traceback(), "Webhook processing error")
+            return {"status": "error", "message": str(e)}
 
     def process_successful_payment(self, transaction):
 

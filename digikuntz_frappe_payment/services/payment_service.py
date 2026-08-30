@@ -1,13 +1,17 @@
 import frappe
 
+from digikuntz_frappe_payment.integrations.payment_client_factory import (
+    PaymentClientFactory
+)
 
-import frappe_digikuntz_payment.services.utils as utils_func
+import digikuntz_frappe_payment.services.utils as utils_func
 
 class PaymentService:
 
-    def __init__(self):
-        self.client = self.get_payment_client(None)
-        self.payment_mode = "Flutterwave" #"PawaPay"
+    def __init__(self, company=None):
+        self.payment_mode = PaymentClientFactory.get_payment_client(company=company)
+        self.mode_name = self.payment_mode["mode"]
+        self.client = self.payment_mode["client"]
 
     
 
@@ -20,16 +24,16 @@ class PaymentService:
 
         redirect_url = (
             frappe.utils.get_url()
-            + "/payment-payment-success"
+            + "/payment-success"
         )
-        
+
         email = payer_email or reference_doc.email_to or reference_doc.contact_email or reference_doc.owner
         customer = reference_doc.party or reference_doc.customer_name
         company = frappe.get_doc("Company",reference_doc.company)
 
         if not email or "@" not in email:
             frappe.throw(
-                f"Customer email is required for {self.payment_mode} payment"
+                f"Customer email is required for {self.mode_name} payment"
             )
 
         response = self.client.initialize_web_payment(
@@ -47,20 +51,17 @@ class PaymentService:
 
             frappe.throw(
                 response.get("message")
-                or f"{self.payment_mode} payment initialization failed"
+                or f"{self.mode_name} payment initialization failed"
             )
         return response
     
-    def mobile_money_charge( self, reference_doc,phone_number, network):
-        ##MEttre un if, elle pour le setting en fonction des moyens de paiements
-        settings = frappe.get_single(f"{self.payment_mode} Settings")
-
+    def mobile_money_charge(self, reference_doc, phone_number, network):
         email = reference_doc.email_to or reference_doc.contact_email or reference_doc.owner
         customer = reference_doc.party or reference_doc.customer_name
-        company = frappe.get_doc("Company",reference_doc.company)
+        company = frappe.get_doc("Company", reference_doc.company)
 
         redirect_url = (
-            frappe.utils.get_url()+ "/payment-payment-success"
+            frappe.utils.get_url() + "/payment-success"
         )
 
         tx_ref = f"PR-{reference_doc.name}"        

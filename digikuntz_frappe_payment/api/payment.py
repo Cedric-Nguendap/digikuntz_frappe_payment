@@ -1,19 +1,19 @@
 import frappe
 
 
-from frappe_digikuntz_flutterwave.services.flutterwave_service import (
-    FlutterwaveService,
+from digikuntz_frappe_payment.services.payment_service import (
+    PaymentService,
 )
 
-from frappe_digikuntz_flutterwave.services.flutterwave_webhook_service import (
-    FlutterwaveWebhookService,
+from digikuntz_frappe_payment.services.payment_webhook_service import (
+    PaymentWebhookService,
 )
 
 
 @frappe.whitelist()
 def create_payment_link( sales_invoice ):
 
-    service = FlutterwaveService()
+    service = PaymentService()
 
     return service.create_invoice_payment(
         sales_invoice
@@ -23,7 +23,7 @@ def create_payment_link( sales_invoice ):
 def initiate_momo_push( payment_request_name, phone_number, network):
 
     pr = frappe.get_doc("Payment Request", payment_request_name)
-    service = FlutterwaveService()
+    service = PaymentService()
 
     return service.mobile_money_charge(
         pr,
@@ -33,5 +33,5 @@ def initiate_momo_push( payment_request_name, phone_number, network):
 
 @frappe.whitelist()
 def check_momo_push( payment_request_name):
-    webhook_service = FlutterwaveWebhookService()
+    webhook_service = PaymentWebhookService()
     return webhook_service.handle_transaction_status(f"PR-{payment_request_name}", is_web_payment=False)

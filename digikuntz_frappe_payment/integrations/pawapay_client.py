@@ -1,15 +1,31 @@
+import uuid
+import hmac
+import hashlib
 import requests
 import frappe
-import frappe_digikuntz_flutterwave.services.utils as utils_func
+import digikuntz_frappe_payment.services.utils as utils_func
 
 
 class PawaPayClient:
 
     def __init__(self):
-        self.settings = frappe.get_single("PawaPay Settings")
-        self.base_url = ""
+        self.settings = frappe.get_single("Pawapay Settings")
+        self.base_url = (self.settings.base_url or "https://api.pawapay.io").rstrip("/")
         self.secret_key = self.settings.get_password("secret_key")
 
+    def validate(self):
+        if not self.settings.enable_pawapay:
+            frappe.throw(
+                msg="PawaPay est désactivé. Veuillez l'activer dans Pawapay Settings.",
+                title="PawaPay Inactif",
+                exc=frappe.ValidationError
+            )
+        if not self.secret_key:
+            frappe.throw(
+                msg="PawaPay API Token est requis. Veuillez le configurer dans Pawapay Settings.",
+                title="Configuration manquante",
+                exc=frappe.ValidationError
+            )
 
     @property
     def headers(self):
@@ -18,203 +34,180 @@ class PawaPayClient:
             "Content-Type": "application/json"
         }
 
-    def initialize_web_payment(
-        self,
-        amount,
-        email,
-        tx_ref,
-        redirect_url,
-        currency="XAF",
-        company = None,
-        customer_name=None
-    ):
-    
-        payload = {
-        }
-
-        if not utils_func.can_use_pawapay():
-            frappe.throw(
-                msg="Impossible de procéder au paiement car le composant PawaPay est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="Composant Inactif",
-                exc=frappe.ValidationError
-            )
-
-        if utils_func.should_use_subaccount(company):
-            id_sous_compte = frappe.get_doc("PawaPay SubAccount", company.custom_sous_compte_par_defaut).subaccount_id
-
-            payload["subaccounts"]= [
-                {
-                    "id": id_sous_compte
-                }
-            ]
-        
+    def _post(self, endpoint, payload):
         try:
             response = requests.post(
-                f"{self.base_url}/payments",
+                f"{self.base_url}{endpoint}",
                 json=payload,
-                headers=self.headers
-            )            
-            data = {**response.json(), "status_code": "success"}
-        except requests.exceptions.HTTPError as http_err:
-            data = {"status_code": "error", "message": str(http_err)}
-        return data
+                headers=self.headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            return {**response.json(), "status_code": "success"}
+        except requests.exceptions.RequestException as e:
+            return {"status_code": "error", "message": str(e)}
 
-    def initialize_mobile_money_payment(
-        self,
-        amount,
-        email,
-        tx_ref,
-        redirect_url,
-        phone_number,
-        network,
-        country="CM",
-        currency="XAF",
-        company = None,
-        customer_name=None
-    ):
-    
+    def _get(self, endpoint):
+        try:
+            response = requests.get(
+                f"{self.base_url}{endpoint}",
+                headers=self.headers,
+                timeout=30
+            )
+            response.raise_for_status()
+            return {**response.json(), "status_code": "success"}
+        except requests.exceptions.RequestException as e:
+            return {"status_code": "error", "message": str(e)}
+
+    def initialize_web_payment(self, amount, email, tx_ref, redirect_url, currency="XAF", company=None, customer_name=None):
+        """
+        PawaPay ne supporte pas de checkout web standard.
+        Le paiement doit être initié via Mobile Money uniquement.
+        """
+        frappe.throw(
+            msg="PawaPay ne supporte pas les paiements web. Veuillez utiliser le paiement Mobile Money depuis le Payment Request.",
+            title="Mode non supporté",
+            exc=frappe.ValidationError
+        )
+
+    def initialize_mobile_money_payment(self, amount, email, tx_ref, redirect_url, phone_number, network, country="CM", currency="XAF", company=None, customer_name=None):
+        """
+        PawaPay API: POST /deposits
+        Un UUID unique (depositId) est généré et stocké pour permettre la vérification ultérieure.
+        """
+        deposit_id = str(uuid.uuid4())
+        self._store_deposit_id(tx_ref, deposit_id)
+
         payload = {
-            "tx_ref": tx_ref,
-            "amount": amount,
+            "depositId": deposit_id,
+            "amount": str(int(amount)),
             "currency": currency,
-            "country": country,
-            "email": email,
-            "phone_number": phone_number,
-            "fullname": customer_name or email,
-            "network": network,
-            "redirect_url": redirect_url
-        }
-
-        if not utils_func.can_use_pawapay():
-            frappe.throw(
-                msg="Impossible de procéder au paiement car le composant PawaPay est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="PawaPay Inactif",
-                exc=frappe.ValidationError
-            )
-
-        if utils_func.should_use_subaccount(company):
-            id_sous_compte = frappe.get_doc("PawaPay SubAccount", company.custom_sous_compte_par_defaut).subaccount_id
-            payload["subaccounts"]= [
-                {
-                    "id": id_sous_compte
+            "correspondent": network,
+            "payer": {
+                "type": "MSISDN",
+                "address": {
+                    "value": phone_number
                 }
-            ]
-
-        try:
-            response = requests.post(
-                f"{self.base_url}/charges?type=mobile_money_franco",
-                json=payload,
-                headers=self.headers
-            )            
-            data = {**response.json(), "status_code": "success"}
-        except requests.exceptions.HTTPError as http_err:
-            data = {"status_code": "error", "message": str(http_err)}
-        return data
-    
-
-    def verify_transaction(self,transaction_id):
-        try:
-            if not utils_func.can_use_pawapay():
-                frappe.throw(
-                    msg="Impossible de procéder a la vérification du paiement car le composant PawaPay est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                    title="PawaPay Inactif",
-                    exc=frappe.ValidationError
-                )
-
-            response = requests.get(
-                f"{self.base_url}/transactions/{transaction_id}/verify",
-                headers=self.headers
-            )
-            data = {**response.json(), "status_code": "success"}
-        except requests.exceptions.HTTPError as http_err:
-            data = {"status_code": "error", "message": str(http_err)}
-
-        return data
-    
-
-    def verify_transaction_by_reference(self,reference):
-        try:
-            if not utils_func.can_use_pawapay():
-                frappe.throw(
-                    msg="Impossible de procéder a la vérification du paiement car le composant PawaPay est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                    title="PawaPay Inactif",
-                    exc=frappe.ValidationError
-                )
-            response = requests.get(
-                f"{self.base_url}/transactions/verify_by_reference?tx_ref={reference}",
-                headers=self.headers
-            )
-            data = {**response.json(), "status_code": "success"}
-        except requests.exceptions.HTTPError as http_err:
-            data = {"status_code": "error", "message": str(http_err)}
-
-        return data
-    
-
-    def create_subaccount(self, company,account_bank,account_number,business_email):
-        payload = {
-            "account_bank": account_bank,
-            "account_number": account_number,
-            "business_name": company.company_name,
-            "business_email": business_email,
-            "split_type": "percentage",
-            "split_value": 0
-        }
-        if not utils_func.can_use_pawapay():
-            frappe.throw(
-                msg="Impossible de procéder a la création du sous-compte car le composant PawaPay est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="PawaPay Inactif",
-                exc=frappe.ValidationError
-            )
-        response = requests.post(
-            f"{self.base_url}/subaccounts",
-            json=payload,
-            headers=self.headers
-        )
-        return response.json()
-    
-    def get_all_subaccount(self):
-        if not utils_func.can_use_pawapay():
-            frappe.throw(
-                msg="Impossible de procéder a la récupération des sous-comptes car le composant PawaPay est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="PawaPay Inactif",
-                exc=frappe.ValidationError
-            )
-        response = requests.get(
-            f"{self.base_url}/subaccounts",
-            headers=self.headers
-        )
-        return response.json()
-    
-    def get_subaccount_infos(self,subaccount_id):
-        if not utils_func.can_use_pawapay():
-            frappe.throw(
-                msg="Impossible de récupérer les informations du sous-comptes car le composant PawaPay est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="PawaPay Inactif",
-                exc=frappe.ValidationError
-            )
-        
-        payload = {
-            "id": subaccount_id
+            },
+            "customerTimestamp": frappe.utils.now_datetime().isoformat() + "Z",
+            "statementDescription": f"Payment {tx_ref}"
         }
 
-        response  = requests.get(
-             f"{self.base_url}/subaccounts",
-            json=payload,
-            headers=self.headers
-        )
-        return response.json()
+        result = self._post("/deposits", payload)
 
+        if result.get("status_code") == "success":
+            result["deposit_id"] = deposit_id
+
+        return result
+
+    def verify_transaction(self, deposit_id):
+        """
+        PawaPay API: GET /deposits/{depositId}
+        Normalise le statut PawaPay vers le format interne (successful/failed/pending).
+        """
+        result = self._get(f"/deposits/{deposit_id}")
+        if result.get("status_code") == "success":
+            pawapay_status = result.get("status", "")
+            result["data"] = {
+                "status": self._normalize_status(pawapay_status),
+                "tx_ref": result.get("statementDescription", "").replace("Payment ", "")
+            }
+        return result
+
+    def verify_transaction_by_reference(self, tx_ref):
+        """
+        PawaPay n'a pas de recherche par tx_ref natif.
+        On récupère le depositId stocké lors de l'initiation du paiement.
+        """
+        deposit_id = self._get_deposit_id(tx_ref)
+        if not deposit_id:
+            return {
+                "status_code": "error",
+                "message": f"Aucun depositId trouvé pour la référence {tx_ref}"
+            }
+        return self.verify_transaction(deposit_id)
+
+    def verify_webhook_signature(self, payload, signature):
+        """
+        PawaPay signe les webhooks avec HMAC-SHA256.
+        """
+        secret = self.settings.get_password("webhook_secret") or ""
+        if not secret:
+            return True
+        expected = hmac.new(secret.encode(), payload.encode(), hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, signature or "")
+
+    def get_active_correspondents(self):
+        """
+        PawaPay API: GET /active-conf
+        Retourne les opérateurs MNO actifs (équivalent des banques pour Flutterwave).
+        """
+        return self._get("/active-conf")
 
     def get_banks(self, country):
+        """
+        Alias pour compatibilité avec l'interface commune.
+        Retourne les correspondants MNO actifs filtrés par pays.
+        """
+        result = self.get_active_correspondents()
+        if result.get("status_code") == "success":
+            correspondents = result.get("correspondents", [])
+            filtered = [c for c in correspondents if c.get("country") == country]
+            result["data"] = [
+                {"name": c.get("correspondent"), "code": c.get("correspondent")}
+                for c in filtered
+            ]
+        return result
 
-        if not utils_func.can_use_pawapay():
-            frappe.throw(
-                msg="Impossible de procéder a la récupération des banques car le composant PawaPay est désactivé.<br><br>Veuillez contacter l'administrateur pour plus de détails.",
-                title="PawaPay Inactif",
-                exc=frappe.ValidationError
-            )
-        response = requests.get(f"{self.base_url}/banks/{country}",headers=self.headers)
+    def get_all_subaccount(self):
+        """PawaPay ne supporte pas les sous-comptes."""
+        return {"status": "success", "data": []}
 
-        return response.json()
-    
+    def get_subaccount_infos(self, subaccount_id):
+        """PawaPay ne supporte pas les sous-comptes."""
+        return {"status": "success", "data": {}}
+
+    def create_subaccount(self, company, account_bank, account_number, business_email):
+        """PawaPay ne supporte pas la création de sous-comptes."""
+        frappe.throw("PawaPay ne supporte pas la création de sous-comptes.")
+
+    def _normalize_status(self, pawapay_status):
+        """Convertit les statuts PawaPay vers le format interne."""
+        mapping = {
+            "COMPLETED": "successful",
+            "FAILED": "failed",
+            "PENDING": "pending",
+            "DUPLICATE_IGNORED": "failed",
+            "REJECTED": "failed",
+            "TIMED_OUT": "failed"
+        }
+        return mapping.get(pawapay_status.upper() if pawapay_status else "", "pending")
+
+    def _store_deposit_id(self, tx_ref, deposit_id):
+        """Stocke la correspondance tx_ref <-> depositId dans le champ remarks du Payment Request."""
+        try:
+            pr_name = tx_ref.replace("PR-", "", 1)
+            if frappe.db.exists("Payment Request", pr_name):
+                existing = frappe.db.get_value("Payment Request", pr_name, "remarks") or ""
+                new_remarks = f"pawapay_deposit_id:{deposit_id}"
+                if existing and "pawapay_deposit_id" not in existing:
+                    new_remarks = existing + "\n" + new_remarks
+                frappe.db.set_value(
+                    "Payment Request", pr_name, "remarks",
+                    new_remarks, update_modified=False
+                )
+                frappe.db.commit()
+        except Exception:
+            pass
+
+    def _get_deposit_id(self, tx_ref):
+        """Récupère le depositId stocké pour un tx_ref donné."""
+        try:
+            pr_name = tx_ref.replace("PR-", "", 1)
+            remarks = frappe.db.get_value("Payment Request", pr_name, "remarks") or ""
+            for part in remarks.split("\n"):
+                if part.startswith("pawapay_deposit_id:"):
+                    return part.split(":", 1)[1].strip()
+        except Exception:
+            pass
+        return None
