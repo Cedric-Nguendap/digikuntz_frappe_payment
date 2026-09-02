@@ -1,6 +1,5 @@
 import json
 import frappe
-
 from digikuntz_frappe_payment.integrations.payment_client_factory import PaymentClientFactory
 
 
@@ -19,43 +18,17 @@ class PaymentWebhookService:
 
             transaction = json.loads(payload)
 
-            # Flutterwave: event = "charge.completed"
-            # PawaPay: pas d'event, status = "COMPLETED" à la racine
-            event = transaction.get("event", "")
-            pawapay_status = transaction.get("status", "")
-
-            if event == "charge.completed":
-                self.process_successful_payment(transaction)
+            # Chaque client sait reconnaître son propre format de webhook
+            tx_ref = self.client.extract_tx_ref_from_webhook(transaction)
+            if tx_ref:
+                self._process_successful_payment(tx_ref)
                 return {"status": "success"}
 
-            if pawapay_status == "COMPLETED":
-                # Normaliser au format interne attendu par process_successful_payment
-                deposit_id = transaction.get("depositId", "")
-                statement = transaction.get("statementDescription", "")
-                tx_ref = statement.replace("Payment ", "") if statement else ""
-                normalized = {"data": {"tx_ref": tx_ref, "status": "successful"}}
-                self.process_successful_payment(normalized)
-                return {"status": "success"}
-
-            return {"status": "ignored", "event": event or pawapay_status}
+            return {"status": "ignored"}
 
         except Exception as e:
             frappe.log_error(frappe.get_traceback(), "Webhook processing error")
             return {"status": "error", "message": str(e)}
-
-    def process_successful_payment(self, transaction):
-        data = transaction.get("data", {})
-        tx_ref = data.get("tx_ref", "")
-        pr_name = tx_ref.replace("PR-", "", 1)
-
-        if not pr_name or not frappe.db.exists("Payment Request", pr_name):
-            frappe.logger().warning(f"Payment Request introuvable pour tx_ref: {tx_ref}")
-            return
-
-        pr = frappe.get_doc("Payment Request", pr_name)
-        if pr.status != "Paid":
-            pr.set_as_paid()
-            frappe.db.commit()
 
     def handle_transaction_status(self, transaction_id, is_web_payment=True):
         if is_web_payment:
@@ -66,10 +39,21 @@ class PaymentWebhookService:
         if transaction.get("status_code") == "success":
             status = transaction.get("data", {}).get("status")
             if status == "successful":
-                self.process_successful_payment(transaction)
+                tx_ref = transaction.get("data", {}).get("tx_ref", "")
+                self._process_successful_payment(tx_ref)
             return status
 
         frappe.logger().error(
             f"Transaction verification failed for {transaction_id}: {transaction.get('message')}"
         )
         return "error"
+
+    def _process_successful_payment(self, tx_ref):
+        pr_name = tx_ref.replace("PR-", "", 1)
+        if not pr_name or not frappe.db.exists("Payment Request", pr_name):
+            frappe.logger().warning(f"Payment Request introuvable pour tx_ref: {tx_ref}")
+            return
+        pr = frappe.get_doc("Payment Request", pr_name)
+        if pr.status != "Paid":
+            pr.set_as_paid()
+            frappe.db.commit()

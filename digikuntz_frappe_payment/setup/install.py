@@ -1,4 +1,5 @@
 import frappe
+from digikuntz_frappe_payment.integrations.gateway_registry import GATEWAY_REGISTRY, get_gateway_config
 
 
 def before_install():
@@ -6,20 +7,17 @@ def before_install():
 
 
 def after_install():
-    ensure_gateway_setup("Flutterwave")
-    ensure_gateway_setup("PawaPay")
+    for gateway in GATEWAY_REGISTRY:
+        ensure_gateway_setup(gateway)
     print("Digikuntz Frappe Payment installé avec succès.")
 
 
 def after_uninstall():
-    for gateway_name, mop_name in [
-        ("Flutterwave Gateway", "Flutterwave"),
-        ("PawaPay Gateway", "PawaPay")
-    ]:
+    for gateway, config in GATEWAY_REGISTRY.items():
         for doctype, name in [
-            ("Payment Gateway Account", {"payment_gateway": gateway_name}),
-            ("Payment Gateway", gateway_name),
-            ("Mode of Payment", mop_name),
+            ("Payment Gateway Account", {"payment_gateway": config["gateway_name"]}),
+            ("Payment Gateway", config["gateway_name"]),
+            ("Mode of Payment", config["mop_name"]),
         ]:
             try:
                 if isinstance(name, dict):
@@ -43,25 +41,13 @@ def ensure_gateway_setup(gateway):
     if not company:
         return
 
-    if gateway == "Flutterwave":
-        gateway_name = "Flutterwave Gateway"
-        settings_doctype = "Flutterwave Settings"
-        mop_name = "Flutterwave"
-        account_name = "Flutterwave Wallet"
-    elif gateway == "PawaPay":
-        gateway_name = "PawaPay Gateway"
-        settings_doctype = "Pawapay Settings"
-        mop_name = "PawaPay"
-        account_name = "PawaPay Wallet"
-    else:
-        frappe.throw(f"Passerelle inconnue : {gateway}")
-
+    config = get_gateway_config(gateway)
     controller = "digikuntz_frappe_payment.services.payment_gateway.DigikuntzPaymentGateway"
 
-    account = _get_or_create_account(account_name, company)
-    _create_payment_gateway(gateway_name, settings_doctype, controller)
-    _create_mode_of_payment(mop_name, company, account)
-    _create_payment_gateway_account(gateway_name, account, company)
+    account = _get_or_create_account(config["account_name"], company)
+    _create_payment_gateway(config["gateway_name"], config["settings_doctype"], controller)
+    _create_mode_of_payment(config["mop_name"], company, account)
+    _create_payment_gateway_account(config["gateway_name"], account, company)
 
 
 def _get_or_create_account(account_name, company):
@@ -97,7 +83,7 @@ def _create_payment_gateway(gateway_name, settings_doctype, controller):
         "gateway": gateway_name,
         "gateway_settings": settings_doctype,
         "gateway_controller": controller
-    }).insert(ignore_permissions=True)
+    }).insert(ignore_permissions=True, ignore_links=True)
     frappe.db.commit()
 
 
@@ -110,18 +96,20 @@ def _create_mode_of_payment(mop_name, company, account):
         "type": "General",
         "enabled": 1,
         "accounts": [{"company": company, "default_account": account}]
-    }).insert(ignore_permissions=True)
+    }).insert(ignore_permissions=True, ignore_links=True)
     frappe.db.commit()
 
 
 def _create_payment_gateway_account(gateway_name, account, company):
     if frappe.db.exists("Payment Gateway Account", {"payment_gateway": gateway_name, "company": company}):
         return
+    currency = frappe.db.get_value("Company", company, "default_currency") or "XAF"
     frappe.get_doc({
         "doctype": "Payment Gateway Account",
         "payment_gateway": gateway_name,
         "payment_account": account,
+        "currency": currency,
         "is_default": 0,
         "company": company
-    }).insert(ignore_permissions=True)
+    }).insert(ignore_permissions=True, ignore_links=True)
     frappe.db.commit()

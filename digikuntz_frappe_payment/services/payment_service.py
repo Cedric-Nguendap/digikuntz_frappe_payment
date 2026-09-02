@@ -15,10 +15,10 @@ class PaymentService:
 
     
 
-    def create_payment_link( self, reference_doc, payer_email=None):
-        if reference_doc.outstanding_amount <= 0:
-        # if reference_doc.grand_total <= 0:
-            frappe.throw(f"{reference_doc.reference_doctype} is already paid")
+    def create_payment_link(self, reference_doc, payer_email=None):
+        amount = reference_doc.grand_total or 0
+        if amount <= 0:
+            frappe.throw(f"{reference_doc.doctype} {reference_doc.name}: grand_total is 0 or missing")
 
         tx_ref = f"PR-{reference_doc.name}"
 
@@ -37,8 +37,7 @@ class PaymentService:
             )
 
         response = self.client.initialize_web_payment(
-            # amount=reference_doc.grand_total,
-            amount=reference_doc.outstanding_amount,
+            amount=amount,
             email=email,
             tx_ref=tx_ref,
             redirect_url=redirect_url,
@@ -56,18 +55,16 @@ class PaymentService:
         return response
     
     def mobile_money_charge(self, reference_doc, phone_number, network):
+        amount = reference_doc.grand_total or 0
         email = reference_doc.email_to or reference_doc.contact_email or reference_doc.owner
         customer = reference_doc.party or reference_doc.customer_name
         company = frappe.get_doc("Company", reference_doc.company)
 
-        redirect_url = (
-            frappe.utils.get_url() + "/payment-success"
-        )
-
-        tx_ref = f"PR-{reference_doc.name}"        
+        redirect_url = frappe.utils.get_url() + "/payment-success"
+        tx_ref = f"PR-{reference_doc.name}"
 
         response_data = self.client.initialize_mobile_money_payment(
-            amount=reference_doc.outstanding_amount,
+            amount=amount,
             email=email,
             tx_ref=tx_ref,
             phone_number=phone_number,

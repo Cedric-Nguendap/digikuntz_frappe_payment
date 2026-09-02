@@ -1,11 +1,10 @@
 import frappe
+from digikuntz_frappe_payment.integrations.gateway_registry import get_gateway_config
 
 
 def get_current_user_email():
-    current_user = frappe.session.user
-    if current_user == "Administrator":
-        return "choudja@gic.cm"
-    return current_user
+    user = frappe.session.user
+    return user if user != "Administrator" else "choudja@gic.cm"
 
 
 def can_use_flutterwave():
@@ -19,25 +18,16 @@ def can_use_pawapay():
 
 
 def should_use_subaccount(company):
-    if not company.custom_activer:
+    if not company or not company.custom_activer:
         return False
-    gateway = company.custom_payment_gateway
-    if gateway == "Flutterwave":
-        return bool(company.custom_sous_compte_par_defaut)
-    elif gateway == "PawaPay":
-        return bool(company.custom_sous_compte_pawapay)
-    return False
+    config = get_gateway_config(company.custom_payment_gateway)
+    return bool(company.get(config["subaccount_field"]))
 
 
 def get_subaccount_id(company):
-    """Retourne le subaccount_id selon la gateway active."""
-    gateway = company.custom_payment_gateway
-    if gateway == "Flutterwave":
-        return frappe.db.get_value(
-            "Flutterwave SubAccount", company.custom_sous_compte_par_defaut, "subaccount_id"
-        )
-    elif gateway == "PawaPay":
-        return frappe.db.get_value(
-            "Pawapay SubAccount", company.custom_sous_compte_pawapay, "subaccount_id"
-        )
-    return None
+    """Retourne le subaccount_id du sous-compte par défaut selon la gateway active."""
+    config = get_gateway_config(company.custom_payment_gateway)
+    subaccount_name = company.get(config["subaccount_field"])
+    if not subaccount_name:
+        return None
+    return frappe.db.get_value(config["subaccount_doctype"], subaccount_name, "subaccount_id")
