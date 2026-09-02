@@ -1,0 +1,82 @@
+{
+ "custom_fields": [
+  {
+   "dt": "Company",
+   "fieldname": "custom_payment_gateway",
+   "fieldtype": "Select",
+   "label": "Passerelle de paiement",
+   "options": "\nFlutterwave\nPawaPay",
+   "insert_after": "dashboard_tab",
+   "in_list_view": 1,
+   "reqd": 0,
+   "name": "Company-custom_payment_gateway"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_payment_tab",
+   "fieldtype": "Tab Break",
+   "label": "Paiement",
+   "insert_after": "custom_payment_gateway",
+   "name": "Company-custom_payment_tab"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_activer",
+   "fieldtype": "Check",
+   "label": "Activer les sous comptes",
+   "insert_after": "custom_payment_tab",
+   "name": "Company-custom_activer"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_column_break_i4qz6",
+   "fieldtype": "Column Break",
+   "label": "",
+   "insert_after": "custom_activer",
+   "name": "Company-custom_column_break_i4qz6"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_sous_compte_par_defaut",
+   "fieldtype": "Link",
+   "label": "Sous compte par defaut (Flutterwave)",
+   "options": "Flutterwave SubAccount",
+   "insert_after": "custom_column_break_i4qz6",
+   "depends_on": "eval:doc.custom_payment_gateway == 'Flutterwave'",
+   "name": "Company-custom_sous_compte_par_defaut"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_sous_compte_pawapay",
+   "fieldtype": "Link",
+   "label": "Sous compte par defaut (PawaPay)",
+   "options": "Pawapay SubAccount",
+   "insert_after": "custom_sous_compte_par_defaut",
+   "depends_on": "eval:doc.custom_payment_gateway == 'PawaPay'",
+   "name": "Company-custom_sous_compte_pawapay"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_banque",
+   "fieldtype": "Data",
+   "label": "Banque",
+   "insert_after": "custom_sous_compte_pawapay",
+   "read_only": 1,
+   "name": "Company-custom_banque"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_numero_de_compte",
+   "fieldtype": "Data",
+   "label": "Numero de compte",
+   "insert_after": "custom_banque",
+   "read_only": 1,
+   "name": "Company-custom_numero_de_compte"
+  }
+ ],
+ "custom_perms": [],
+ "doctype": "Company",
+ "links": [],
+ "property_setters": [],
+ "sync_on_migrate": 1
+}

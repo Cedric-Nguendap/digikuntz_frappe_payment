@@ -1,80 +1,80 @@
 import frappe
 
+
+def before_install():
+    pass
+
+
 def after_install():
-    create_payment_gateway()
-    create_mode_of_payment()
-    create_payment_gateway_account()
-    print("End of installation script Digikuntz Frappe Payment")
+    ensure_gateway_setup("Flutterwave")
+    ensure_gateway_setup("PawaPay")
+    print("Digikuntz Frappe Payment installé avec succès.")
 
 
 def after_uninstall():
-    for doctype, name in [
-        ("Payment Gateway Account", {"payment_gateway": "Flutterwave Gateway"}),
-        ("Payment Gateway", "Flutterwave Gateway"),
-        ("Mode of Payment", "Flutterwave"),
+    for gateway_name, mop_name in [
+        ("Flutterwave Gateway", "Flutterwave"),
+        ("PawaPay Gateway", "PawaPay")
     ]:
-        try:
-            if isinstance(name, dict):
-                existing = frappe.db.get_value(doctype, name, "name")
-                if existing:
-                    frappe.delete_doc(doctype, existing, ignore_permissions=True)
-            elif frappe.db.exists(doctype, name):
-                frappe.delete_doc(doctype, name, ignore_permissions=True)
-        except Exception:
-            pass
+        for doctype, name in [
+            ("Payment Gateway Account", {"payment_gateway": gateway_name}),
+            ("Payment Gateway", gateway_name),
+            ("Mode of Payment", mop_name),
+        ]:
+            try:
+                if isinstance(name, dict):
+                    existing = frappe.db.get_value(doctype, name, "name")
+                    if existing:
+                        frappe.delete_doc(doctype, existing, ignore_permissions=True)
+                elif frappe.db.exists(doctype, name):
+                    frappe.delete_doc(doctype, name, ignore_permissions=True)
+            except Exception:
+                pass
     frappe.db.commit()
-    print("Digikuntz Frappe Payment uninstalled")
+    print("Digikuntz Frappe Payment désinstallé.")
 
 
-def create_mode_of_payment():
-    if not frappe.db.exists("Mode of Payment", "Flutterwave"):
-        mop = frappe.get_doc({
-            "doctype": "Mode of Payment",
-            "mode_of_payment": "Flutterwave",
-            "type": "General",
-            "enabled": 1,
-            "accounts": [
-                {
-                    "company": frappe.defaults.get_global_default("company"),
-                    "default_account": get_or_create_account()
-                }
-            ]
-        })
-
-        mop.insert(ignore_permissions=True)
-
-
-def get_or_create_account():
-
-    account_name = "Flutterwave Wallet"
+def ensure_gateway_setup(gateway):
+    """
+    Crée si nécessaire : Payment Gateway, Mode of Payment, Account, Payment Gateway Account.
+    Appelé à l'installation ET lors de la sélection d'une passerelle sur la Company.
+    """
     company = frappe.defaults.get_global_default("company")
+    if not company:
+        return
 
-    if frappe.db.exists("Account", {"account_name":account_name}):
-        return frappe.get_doc("Account", {"account_name":account_name}).name
+    if gateway == "Flutterwave":
+        gateway_name = "Flutterwave Gateway"
+        settings_doctype = "Flutterwave Settings"
+        mop_name = "Flutterwave"
+        account_name = "Flutterwave Wallet"
+    elif gateway == "PawaPay":
+        gateway_name = "PawaPay Gateway"
+        settings_doctype = "Pawapay Settings"
+        mop_name = "PawaPay"
+        account_name = "PawaPay Wallet"
+    else:
+        frappe.throw(f"Passerelle inconnue : {gateway}")
 
-    # récupérer un parent valide dynamiquement
-    parent = frappe.db.get_value(
-        "Account",
-        {
-            "account_name": "Current Assets",
-            "company": company
-        },
-        "name"
+    controller = "digikuntz_frappe_payment.services.payment_gateway.DigikuntzPaymentGateway"
+
+    account = _get_or_create_account(account_name, company)
+    _create_payment_gateway(gateway_name, settings_doctype, controller)
+    _create_mode_of_payment(mop_name, company, account)
+    _create_payment_gateway_account(gateway_name, account, company)
+
+
+def _get_or_create_account(account_name, company):
+    existing = frappe.db.get_value("Account", {"account_name": account_name, "company": company}, "name")
+    if existing:
+        return existing
+
+    parent = (
+        frappe.db.get_value("Account", {"account_name": "Current Assets", "company": company}, "name")
+        or frappe.db.get_value("Account", {"is_group": 1, "root_type": "Asset", "company": company}, "name")
     )
-
     if not parent:
-        # fallback plus robuste
-        parent = frappe.db.get_value(
-            "Account",
-            {
-                "is_group": 1,
-                "company": company
-            },
-            "name"
-        )
-
-    if not parent:
-        frappe.throw("No valid parent account found for Flutterwave Wallet")
+        frappe.throw(f"Impossible de trouver un compte parent pour '{account_name}'")
 
     account = frappe.get_doc({
         "doctype": "Account",
@@ -84,45 +84,44 @@ def get_or_create_account():
         "company": company,
         "is_group": 0
     })
-
     account.insert(ignore_permissions=True)
-
+    frappe.db.commit()
     return account.name
 
-    
 
-
-def create_payment_gateway():
-    if frappe.db.exists("Payment Gateway", "Flutterwave Gateway"):
+def _create_payment_gateway(gateway_name, settings_doctype, controller):
+    if frappe.db.exists("Payment Gateway", gateway_name):
         return
-
-    gateway = frappe.get_doc({
+    frappe.get_doc({
         "doctype": "Payment Gateway",
-        "gateway": "Flutterwave Gateway",
-        "gateway_settings": "Flutterwave Settings",
-        "gateway_controller": "frappe_digikuntz_flutterwave.services.payment_gateway.FlutterwavePaymentGateway"
-    })
-
-    gateway.insert(ignore_permissions=True)
+        "gateway": gateway_name,
+        "gateway_settings": settings_doctype,
+        "gateway_controller": controller
+    }).insert(ignore_permissions=True)
     frappe.db.commit()
 
-def create_payment_gateway_account():
-    company = frappe.defaults.get_global_default("company")
-    # 1. On vérifie si le lien existe déjà
-    if frappe.db.exists("Payment Gateway Account", {"payment_gateway": "Flutterwave Gateway", "company": company}):
-        return
 
-    # 2. On s'assure que le compte et la gateway existent
-    account = get_or_create_account() 
-    
-    # 3. On crée le lien
-    pga = frappe.get_doc({
+def _create_mode_of_payment(mop_name, company, account):
+    if frappe.db.exists("Mode of Payment", mop_name):
+        return
+    frappe.get_doc({
+        "doctype": "Mode of Payment",
+        "mode_of_payment": mop_name,
+        "type": "General",
+        "enabled": 1,
+        "accounts": [{"company": company, "default_account": account}]
+    }).insert(ignore_permissions=True)
+    frappe.db.commit()
+
+
+def _create_payment_gateway_account(gateway_name, account, company):
+    if frappe.db.exists("Payment Gateway Account", {"payment_gateway": gateway_name, "company": company}):
+        return
+    frappe.get_doc({
         "doctype": "Payment Gateway Account",
-        "payment_gateway": "Flutterwave Gateway", # Le nom de ta Gateway
-        "payment_account": account,       # Le compte que ta fonction a créé
-        "is_default": 1,
-        "company": frappe.defaults.get_global_default("company")
-    })
-    
-    pga.insert(ignore_permissions=True)
+        "payment_gateway": gateway_name,
+        "payment_account": account,
+        "is_default": 0,
+        "company": company
+    }).insert(ignore_permissions=True)
     frappe.db.commit()

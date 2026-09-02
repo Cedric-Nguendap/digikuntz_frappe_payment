@@ -64,8 +64,9 @@ class FlutterwaveClient:
         }
 
         if utils_func.should_use_subaccount(company):
-            subaccount_id = frappe.get_doc("Flutterwave SubAccount", company.custom_sous_compte_par_defaut).subaccount_id
-            payload["subaccounts"] = [{"id": subaccount_id}]
+            subaccount_id = utils_func.get_subaccount_id(company)
+            if subaccount_id:
+                payload["subaccounts"] = [{"id": subaccount_id}]
 
         return self._post("/payments", payload)
 
@@ -83,8 +84,9 @@ class FlutterwaveClient:
         }
 
         if utils_func.should_use_subaccount(company):
-            subaccount_id = frappe.get_doc("Flutterwave SubAccount", company.custom_sous_compte_par_defaut).subaccount_id
-            payload["subaccounts"] = [{"id": subaccount_id}]
+            subaccount_id = utils_func.get_subaccount_id(company)
+            if subaccount_id:
+                payload["subaccounts"] = [{"id": subaccount_id}]
 
         return self._post("/charges?type=mobile_money_franco", payload)
 

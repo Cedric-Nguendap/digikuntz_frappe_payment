@@ -8,7 +8,12 @@ app_license = "mit"
 # Apps
 # ------------------
 
-required_apps = ["frappe_digikuntz_flutterwave", "frappe_digikuntz_pawapay"]
+required_apps = []
+
+payment_gateway_enabled = [
+    "Flutterwave Gateway",
+    "PawaPay Gateway"
+]
 
 # Each item in the list will be shown as an app in the apps page
 # add_to_apps_screen = [
@@ -97,6 +102,7 @@ doctype_js = {
 # ------------
 
 # before_uninstall = "digikuntz_frappe_payment.uninstall.before_uninstall"
+before_install = "digikuntz_frappe_payment.setup.install.before_install"
 after_install = "digikuntz_frappe_payment.setup.install.after_install"
 after_uninstall = "digikuntz_frappe_payment.setup.install.after_uninstall"
 
