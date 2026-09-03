@@ -74,6 +74,7 @@ class PawaPayClient(BasePaymentClient):
         #     payload["notificationUrl"] = callback_url
 
         result = self._post("/v2/paymentpage", payload)
+        # raise Exception()
         if isinstance(result, tuple):
             return err(result[1])
         pawapay_redirect = result.get("redirectUrl")
@@ -81,10 +82,11 @@ class PawaPayClient(BasePaymentClient):
             return err(result.get("errorMessage") or "PawaPay n'a pas retourné de redirectUrl")
         return ok({"redirect_url": pawapay_redirect, "transaction_id": deposit_id})
 
-    def initialize_mobile_money_payment(self, amount, email, tx_ref, redirect_url, phone_number, network, country="CM", currency="XAF", company=None, customer_name=None, callback_url=None):
+    def initialize_mobile_money_payment(self, amount, email, tx_ref, redirect_url, phone_number, network, country="CMR", currency="XAF", company=None, customer_name=None, callback_url=None):
         """Direct deposit PawaPay v2 — POST /v2/deposits"""
         deposit_id = str(uuid.uuid4())
         _store_pawapay_data(tx_ref, deposit_id)
+
 
         payload = {
             "depositId": deposit_id,
@@ -92,7 +94,7 @@ class PawaPayClient(BasePaymentClient):
             "currency": currency,
             "payer": {
                 "type": "MMO",
-                "accountDetails": {"provider": network, "phoneNumber": phone_number}
+                "accountDetails": {"provider": f"{network}_{country}", "phoneNumber": phone_number}
             },
             "customerMessage": f"Payment {tx_ref}"
         }
@@ -100,6 +102,8 @@ class PawaPayClient(BasePaymentClient):
             payload["notificationUrl"] = callback_url
 
         result = self._post("/v2/deposits", payload)
+        print("Result",payload, result)
+
         if isinstance(result, tuple):
             return err(result[1])
         if result.get("status") not in ("ACCEPTED", None) and result.get("errorCode"):
@@ -109,6 +113,7 @@ class PawaPayClient(BasePaymentClient):
     def verify_transaction(self, deposit_id):
         """GET /v2/deposits/:depositId — retourne une liste"""
         result = self._get(f"/v2/deposits/{deposit_id}")
+        
         if isinstance(result, tuple):
             return err(result[1])
         frappe.logger().info(f"PawaPay verify_transaction raw response: {result}")
@@ -116,6 +121,8 @@ class PawaPayClient(BasePaymentClient):
         data = result[0] if isinstance(result, list) and result else result
         if not data or data.get("status") == "NOT_FOUND":
             return err(f"Deposit {deposit_id} not found")
+        
+        data = data.get("data")
         return ok({
             "status": _normalize_pawapay_status(data.get("status", "")),
             "tx_ref": _extract_tx_ref_from_message(data.get("customerMessage", ""))

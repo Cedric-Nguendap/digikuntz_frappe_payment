@@ -8,12 +8,12 @@ def get_context(context):
     tx_ref = frappe.form_dict.get("tx_ref") or ""
     transaction_id = frappe.form_dict.get("transaction_id") or frappe.form_dict.get("depositId") or ""
 
+    print("transaction_id ", transaction_id)
     # Si pas de tx_ref, essayer de le retrouver depuis le depositId (retour PawaPay)
     if not tx_ref and transaction_id:
         tx_ref = _get_tx_ref_from_deposit_id(transaction_id) or ""
 
     company = _get_company_from_tx_ref(tx_ref)
-
     if not company or not transaction_id:
         context.status = "error"
         context.tx_ref = tx_ref
@@ -22,7 +22,7 @@ def get_context(context):
 
     service = PaymentWebhookService(company=company)
     status = service.handle_transaction_status(transaction_id, tx_ref=tx_ref)
-
+    
     context.status = status
     context.tx_ref = tx_ref
     context.transaction_id = transaction_id
