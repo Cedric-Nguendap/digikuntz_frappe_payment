@@ -9,7 +9,8 @@
   "webhook_secret",
   "column_break_1",
   "base_url",
-  "environment"
+  "environment",
+  "default_country"
  ],
  "fields": [
   {
@@ -46,6 +47,12 @@
    "fieldtype": "Select",
    "label": "Environnement",
    "options": "production\nsandbox"
+  },
+  {
+   "fieldname": "default_country",
+   "fieldtype": "Data",
+   "label": "Pays par defaut (ISO alpha-3)",
+   "description": "Ex: CMR, SEN, CIV, GHA, ZMB"
   }
  ],
  "issingle": 1,

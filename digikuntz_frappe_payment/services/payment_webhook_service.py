@@ -17,8 +17,6 @@ class PaymentWebhookService:
                 return {"status": "error", "message": "Invalid signature"}
 
             transaction = json.loads(payload)
-
-            # Chaque client sait reconnaître son propre format de webhook
             tx_ref = self.client.extract_tx_ref_from_webhook(transaction)
             if tx_ref:
                 self._process_successful_payment(tx_ref)
@@ -30,23 +28,25 @@ class PaymentWebhookService:
             frappe.log_error(frappe.get_traceback(), "Webhook processing error")
             return {"status": "error", "message": str(e)}
 
-    def handle_transaction_status(self, transaction_id, is_web_payment=True):
+    def handle_transaction_status(self, transaction_id, is_web_payment=True, tx_ref=None):
         if is_web_payment:
-            transaction = self.client.verify_transaction(transaction_id)
+            response = self.client.verify_transaction(transaction_id)
         else:
-            transaction = self.client.verify_transaction_by_reference(transaction_id)
+            response = self.client.verify_transaction_by_reference(transaction_id)
 
-        if transaction.get("status_code") == "success":
-            status = transaction.get("data", {}).get("status")
-            if status == "successful":
-                tx_ref = transaction.get("data", {}).get("tx_ref", "")
-                self._process_successful_payment(tx_ref)
-            return status
+        if not response.get("ok"):
+            frappe.logger().error(
+                f"Transaction verification failed for {transaction_id}: {response.get('error')}"
+            )
+            return "error"
 
-        frappe.logger().error(
-            f"Transaction verification failed for {transaction_id}: {transaction.get('message')}"
-        )
-        return "error"
+        data = response.get("data", {})
+        status = data.get("status")
+        if status == "successful":
+            # Priorité au tx_ref passé en paramètre (web payment), sinon celui retourné par l'API
+            resolved_tx_ref = tx_ref or data.get("tx_ref", "")
+            self._process_successful_payment(resolved_tx_ref)
+        return status
 
     def _process_successful_payment(self, tx_ref):
         pr_name = tx_ref.replace("PR-", "", 1)

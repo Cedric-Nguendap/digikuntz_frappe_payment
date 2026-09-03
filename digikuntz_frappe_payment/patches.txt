@@ -5,3 +5,4 @@
 [post_model_sync]
 # Patches added in this section will be executed after doctypes are migrated
 digikuntz_frappe_payment.patches.remove_legacy_company_tabs
+digikuntz_frappe_payment.patches.extend_payment_url_field

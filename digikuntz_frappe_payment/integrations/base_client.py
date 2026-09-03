@@ -1,11 +1,32 @@
 from abc import ABC, abstractmethod
 
 
+def ok(data=None):
+    """Réponse standard succès."""
+    return {"ok": True, "data": data or {}}
+
+
+def err(message):
+    """Réponse standard erreur."""
+    return {"ok": False, "error": str(message)}
+
+
 class BasePaymentClient(ABC):
     """
     Contrat commun à toutes les passerelles de paiement.
-    Pour ajouter une nouvelle gateway, créer une classe qui hérite de BasePaymentClient
-    et implémenter toutes les méthodes abstraites.
+
+    Toutes les méthodes DOIVENT retourner soit ok(...) soit err(...).
+
+    ok(data) — succès :
+        data pour initialize_web_payment      : {"redirect_url": str, "transaction_id": str}
+        data pour initialize_mobile_money_*   : {"transaction_id": str}
+        data pour verify_transaction*         : {"status": "successful|failed|pending", "tx_ref": str}
+        data pour get_banks                   : {"banks": [{"name": str, "code": str}]}
+        data pour get_all_subaccount          : {"subaccounts": [...]}
+        data pour get_subaccount_infos        : {"subaccount": {...}}
+
+    err(message) — erreur :
+        {"ok": False, "error": str}
     """
 
     @abstractmethod
@@ -13,22 +34,32 @@ class BasePaymentClient(ABC):
         """Vérifie que la configuration (clés API, activation) est valide."""
 
     @abstractmethod
-    def initialize_web_payment(self, amount, email, tx_ref, redirect_url, currency, company, customer_name):
-        """Initialise un paiement web (checkout). Lever une exception si non supporté."""
+    def initialize_web_payment(self, amount, email, tx_ref, redirect_url, currency, company, customer_name, callback_url=None):
+        """
+        Initialise un paiement web (checkout).
+        Retourne ok({"redirect_url": str, "transaction_id": str}) ou err(...)
+        """
 
     @abstractmethod
-    def initialize_mobile_money_payment(self, amount, email, tx_ref, redirect_url, phone_number, network, country, currency, company, customer_name):
-        """Initialise un paiement Mobile Money (push USSD)."""
+    def initialize_mobile_money_payment(self, amount, email, tx_ref, redirect_url, phone_number, network, country, currency, company, customer_name, callback_url=None):
+        """
+        Initialise un paiement Mobile Money (push USSD).
+        Retourne ok({"transaction_id": str}) ou err(...)
+        """
 
     @abstractmethod
     def verify_transaction(self, transaction_id):
-        """Vérifie le statut d'une transaction par son ID natif.
-        Doit retourner : {"status_code": "success", "data": {"status": "successful|failed|pending", "tx_ref": "..."}}
+        """
+        Vérifie le statut d'une transaction par son ID natif.
+        Retourne ok({"status": "successful|failed|pending", "tx_ref": str}) ou err(...)
         """
 
     @abstractmethod
     def verify_transaction_by_reference(self, tx_ref):
-        """Vérifie le statut d'une transaction par le tx_ref ERPNext (ex: PR-0001)."""
+        """
+        Vérifie le statut d'une transaction par le tx_ref ERPNext (ex: PR-0001).
+        Retourne ok({"status": "successful|failed|pending", "tx_ref": str}) ou err(...)
+        """
 
     @abstractmethod
     def verify_webhook_signature(self, payload, signature):
@@ -38,25 +69,25 @@ class BasePaymentClient(ABC):
     def extract_tx_ref_from_webhook(self, transaction):
         """
         Extrait le tx_ref depuis le payload webhook déjà parsé (dict).
-        Retourne le tx_ref si c'est un événement de paiement réussi, None sinon.
-        C'est le client qui connaît le format de son propre webhook.
+        Retourne le tx_ref (str) si paiement réussi, None sinon.
         """
 
     @abstractmethod
     def get_banks(self, country):
-        """Retourne la liste des banques/opérateurs disponibles pour un pays.
-        Doit retourner : {"status_code": "success", "data": [{"name": ..., "code": ...}]}
+        """
+        Retourne la liste des banques/opérateurs disponibles pour un pays.
+        Retourne ok({"banks": [{"name": str, "code": str}]}) ou err(...)
         """
 
     def get_all_subaccount(self):
-        """Retourne tous les sous-comptes. Retourner {"status": "success", "data": []} si non supporté."""
-        return {"status": "success", "data": []}
+        """Retourne ok({"subaccounts": []}) si non supporté."""
+        return ok({"subaccounts": []})
 
     def get_subaccount_infos(self, subaccount_id):
-        """Retourne les infos d'un sous-compte. Retourner {"status": "success", "data": {}} si non supporté."""
-        return {"status": "success", "data": {}}
+        """Retourne ok({"subaccount": {}}) si non supporté."""
+        return ok({"subaccount": {}})
 
     def create_subaccount(self, company, account_bank, account_number, business_email):
-        """Crée un sous-compte. Lever une exception si non supporté."""
+        """Lève une exception si non supporté."""
         import frappe
         frappe.throw(f"{self.__class__.__name__} ne supporte pas la création de sous-comptes.")

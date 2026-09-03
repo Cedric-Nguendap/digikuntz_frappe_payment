@@ -1,90 +1,92 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Payment Status</title>
-
+    <title>Statut du Paiement</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-
     <style>
-        body {
-            background: #f6f8fb;
-            font-family: Arial, sans-serif;
-        }
-
+        body { background: #f6f8fb; font-family: Arial, sans-serif; }
         .card-box {
-            max-width: 500px;
-            margin: 80px auto;
-            padding: 30px;
-            border-radius: 16px;
-            background: white;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
-            text-align: center;
+            max-width: 500px; margin: 80px auto; padding: 30px;
+            border-radius: 16px; background: white;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08); text-align: center;
         }
-
-        .icon {
-            font-size: 60px;
-            margin-bottom: 15px;
-        }
-
-        .success {
-            color: #28a745;
-        }
-
-        .error {
-            color: #dc3545;
-        }
-
-        .pending {
-            color: #ffc107;
-        }
-
-        .btn-main {
-            margin-top: 20px;
-            border-radius: 10px;
-            padding: 10px 20px;
-        }
-
-        .ref {
-            font-size: 13px;
-            color: #888;
-            margin-top: 10px;
-        }
+        .icon { font-size: 60px; margin-bottom: 15px; }
+        .success { color: #28a745; }
+        .error   { color: #dc3545; }
+        .pending { color: #ffc107; }
     </style>
 </head>
-
 <body>
-
-<div class="card-box">
+<div class="card-box" id="status-box">
 
     {% if status == "successful" %}
-
         <div class="icon success">✔</div>
-        <h3>Payment Successful</h3>
-        <p>Your transaction has been completed successfully.</p>
+        <h3>Paiement Réussi</h3>
+        <p>Votre transaction a été complétée avec succès.</p>
 
-    {% elif status == "error" %}
-
+    {% elif status in ("failed", "error") %}
         <div class="icon error">✖</div>
-        <h3>Payment Failed</h3>
-        <p>Something went wrong during your payment.</p>
+        <h3>Paiement Échoué</h3>
+        <p>Une erreur s'est produite lors de votre paiement.</p>
 
     {% else %}
-
         <div class="icon pending">⏳</div>
-        <h3>Verifying Payment...</h3>
-        <p>Please wait while we confirm your transaction.</p>
-
+        <h3 id="pending-title">Vérification en cours...</h3>
+        <p id="pending-msg">Veuillez patienter pendant que nous confirmons votre transaction.</p>
     {% endif %}
 
-    <div class="ref">
-        Transaction Ref: {{ tx_ref or "N/A" }} <br>
+    <div style="font-size:13px;color:#888;margin-top:10px;">
+        Réf: {{ tx_ref or "N/A" }}
     </div>
-
-    <!-- <a href="/" class="btn btn-primary btn-main">
-        Back to Dashboard
-    </a> -->
-
 </div>
+
+{% if status not in ("successful", "failed", "error") %}
+<script>
+    const transactionId = "{{ transaction_id or '' }}";
+    const txRef = "{{ tx_ref or '' }}";
+    let attempts = 0;
+    const maxAttempts = 12;
+
+    function renderStatus(status) {
+        const box = document.getElementById("status-box");
+        if (status === "successful") {
+            box.innerHTML = `
+                <div class="icon success">✔</div>
+                <h3>Paiement Réussi</h3>
+                <p>Votre transaction a été complétée avec succès.</p>
+                <div style="font-size:13px;color:#888;margin-top:10px;">Réf: ${txRef || "N/A"}</div>`;
+        } else if (status === "failed" || status === "error") {
+            box.innerHTML = `
+                <div class="icon error">✖</div>
+                <h3>Paiement Échoué</h3>
+                <p>Une erreur s'est produite lors de votre paiement.</p>
+                <div style="font-size:13px;color:#888;margin-top:10px;">Réf: ${txRef || "N/A"}</div>`;
+        }
+    }
+
+    function poll() {
+        if (!transactionId) return;
+        attempts++;
+
+        fetch(`/api/method/digikuntz_frappe_payment.api.payment.check_payment_status?transaction_id=${encodeURIComponent(transactionId)}&tx_ref=${encodeURIComponent(txRef)}`)
+            .then(r => r.json())
+            .then(data => {
+                const status = (data.message || {}).status || data.status || "";
+                if (status === "successful" || status === "failed" || status === "error") {
+                    renderStatus(status);
+                } else if (attempts < maxAttempts) {
+                    setTimeout(poll, 5000);
+                } else {
+                    document.getElementById("pending-title").textContent = "Statut inconnu";
+                    document.getElementById("pending-msg").textContent = "Veuillez vérifier votre relevé ou contacter le support.";
+                }
+            })
+            .catch(() => { if (attempts < maxAttempts) setTimeout(poll, 5000); });
+    }
+
+    setTimeout(poll, 3000);
+</script>
+{% endif %}
 
 </body>
 </html>

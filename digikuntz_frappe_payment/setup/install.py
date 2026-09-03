@@ -7,9 +7,29 @@ def before_install():
 
 
 def after_install():
+    _extend_payment_url_field()
     for gateway in GATEWAY_REGISTRY:
         ensure_gateway_setup(gateway)
     print("Digikuntz Frappe Payment installé avec succès.")
+
+
+def _extend_payment_url_field():
+    """Étend payment_url en Small Text via Property Setter."""
+    frappe.db.delete("Property Setter", {
+        "doc_type": "Payment Request",
+        "field_name": "payment_url",
+        "property": "fieldtype"
+    })
+    frappe.get_doc({
+        "doctype": "Property Setter",
+        "doc_type": "Payment Request",
+        "field_name": "payment_url",
+        "property": "fieldtype",
+        "value": "Small Text",
+        "property_type": "Select",
+        "doctype_or_field": "DocField"
+    }).insert(ignore_permissions=True)
+    frappe.db.commit()
 
 
 def after_uninstall():

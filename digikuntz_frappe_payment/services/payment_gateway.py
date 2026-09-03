@@ -1,5 +1,4 @@
 import frappe
-
 from digikuntz_frappe_payment.services.payment_service import PaymentService
 
 
@@ -18,4 +17,5 @@ class DigikuntzPaymentGateway:
 
         response = service.create_payment_link(doc, payer_email=kwargs.get("payer_email"))
 
-        return response["data"]["link"]
+        gateway_redirect = (response.get("data") or {}).get("redirect_url") or ""
+        return gateway_redirect
