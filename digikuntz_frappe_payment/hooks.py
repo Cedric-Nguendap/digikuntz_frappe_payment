@@ -24,6 +24,13 @@ doctype_js = {
     "Company": "public/js/company.js",
 }
 
+# Nettoyage automatique des Payment Redirect de plus de 30 jours
+scheduler_events = {
+    "weekly": [
+        "digikuntz_frappe_payment.services.cleanup.delete_old_payment_redirects",
+    ]
+}
+
 # Hooks d'installation
 before_install = "digikuntz_frappe_payment.setup.install.before_install"
 after_install = "digikuntz_frappe_payment.setup.install.after_install"

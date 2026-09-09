@@ -18,7 +18,7 @@ class PaymentService:
 
         tx_ref = f"PR-{reference_doc.name}"
         base_url = frappe.utils.get_url()
-        redirect_url = base_url + "/payment-success"
+        redirect_url = base_url + "/payment-success?pr=" + reference_doc.name
         callback_url = base_url + "/api/method/digikuntz_frappe_payment.api.webhook.payment_webhook"
 
         email = payer_email or reference_doc.email_to or reference_doc.contact_email or reference_doc.owner
@@ -50,7 +50,7 @@ class PaymentService:
         company = frappe.get_doc("Company", reference_doc.company)
 
         base_url = frappe.utils.get_url()
-        redirect_url = base_url + "/payment-success"
+        redirect_url = base_url + "/payment-success?pr=" + reference_doc.name
         callback_url = base_url + "/api/method/digikuntz_frappe_payment.api.webhook.payment_webhook"
         tx_ref = f"PR-{reference_doc.name}"
 

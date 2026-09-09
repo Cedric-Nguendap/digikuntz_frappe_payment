@@ -5,15 +5,32 @@ from digikuntz_frappe_payment.services.payment_webhook_service import PaymentWeb
 def get_context(context):
     context.no_cache = 1
 
+    # PawaPay retourne ?depositId=uuid
+    # Flutterwave retourne ?tx_ref=PR-...&transaction_id=...
+    pr_name = frappe.form_dict.get("pr") or ""
     tx_ref = frappe.form_dict.get("tx_ref") or ""
     transaction_id = frappe.form_dict.get("transaction_id") or frappe.form_dict.get("depositId") or ""
 
-    print("transaction_id ", transaction_id)
-    # Si pas de tx_ref, essayer de le retrouver depuis le depositId (retour PawaPay)
-    if not tx_ref and transaction_id:
-        tx_ref = _get_tx_ref_from_deposit_id(transaction_id) or ""
+    # Résoudre pr_name depuis depositId via Payment Redirect (cas PawaPay)
+    if not pr_name and transaction_id:
+        pr_name = frappe.db.get_value(
+            "Payment Redirect", {"deposit_id": transaction_id}, "payment_request"
+        ) or ""
 
-    company = _get_company_from_tx_ref(tx_ref)
+    # Résoudre pr_name/tx_ref mutuellement
+    if pr_name and not tx_ref:
+        tx_ref = f"PR-{pr_name}"
+    elif tx_ref and not pr_name:
+        pr_name = tx_ref.replace("PR-", "", 1)
+
+    # Résoudre transaction_id depuis Payment Redirect si toujours absent
+    if not transaction_id and pr_name:
+        transaction_id = frappe.db.get_value(
+            "Payment Redirect", {"payment_request": pr_name}, "deposit_id"
+        ) or ""
+
+    company = _get_company(pr_name)
+
     if not company or not transaction_id:
         context.status = "error"
         context.tx_ref = tx_ref
@@ -22,33 +39,17 @@ def get_context(context):
 
     service = PaymentWebhookService(company=company)
     status = service.handle_transaction_status(transaction_id, tx_ref=tx_ref)
-    
+
     context.status = status
     context.tx_ref = tx_ref
     context.transaction_id = transaction_id
     return context
 
 
-def _get_company_from_tx_ref(tx_ref):
+def _get_company(pr_name):
     try:
-        pr_name = tx_ref.replace("PR-", "", 1)
         if pr_name and frappe.db.exists("Payment Request", pr_name):
             return frappe.db.get_value("Payment Request", pr_name, "company")
-    except Exception:
-        pass
-    return None
-
-
-def _get_tx_ref_from_deposit_id(deposit_id):
-    """Retrouve le tx_ref en cherchant le PR dont payment_url contient le depositId."""
-    try:
-        pr_name = frappe.db.get_value(
-            "Payment Request",
-            {"payment_url": ["like", f"%{deposit_id}%"]},
-            "name"
-        )
-        if pr_name:
-            return f"PR-{pr_name}"
     except Exception:
         pass
     return None

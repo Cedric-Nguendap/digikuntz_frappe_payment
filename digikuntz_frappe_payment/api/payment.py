@@ -11,26 +11,29 @@ def initiate_momo_push(payment_request_name, phone_number, network):
 
 
 @frappe.whitelist(allow_guest=True)
-def check_payment_status(transaction_id, tx_ref=None):
+def check_payment_status(transaction_id=None, tx_ref=None, pr=None):
     """Endpoint JSON pour le polling de statut depuis payment-success.html"""
-    if not transaction_id:
+
+    # Résoudre pr_name
+    pr_name = pr or (tx_ref.replace("PR-", "", 1) if tx_ref else None)
+
+    # Résoudre transaction_id depuis Payment Redirect si non fourni
+    if not transaction_id and pr_name:
+        transaction_id = frappe.db.get_value(
+            "Payment Redirect", {"payment_request": pr_name}, "deposit_id"
+        ) or ""
+
+    # Résoudre tx_ref depuis pr_name
+    if not tx_ref and pr_name:
+        tx_ref = f"PR-{pr_name}"
+
+    if not transaction_id or not pr_name:
         return {"status": "error"}
 
-    # Retrouver tx_ref depuis depositId si non fourni (cas PawaPay)
-    if not tx_ref:
-        pr_name = frappe.db.get_value(
-            "Payment Request",
-            {"payment_url": ["like", f"%{transaction_id}%"]},
-            "name"
-        )
-        tx_ref = f"PR-{pr_name}" if pr_name else ""
+    if not frappe.db.exists("Payment Request", pr_name):
+        return {"status": "error"}
 
-    company = None
-    if tx_ref:
-        pr_name = tx_ref.replace("PR-", "", 1)
-        if frappe.db.exists("Payment Request", pr_name):
-            company = frappe.db.get_value("Payment Request", pr_name, "company")
-
+    company = frappe.db.get_value("Payment Request", pr_name, "company")
     if not company:
         return {"status": "error"}
 
