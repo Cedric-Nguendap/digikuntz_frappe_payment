@@ -1,17 +1,50 @@
 frappe.ui.form.on("Payment Request", {
     refresh(frm) {
-        if (frm.doc.status === "Paid" || frm.doc.docstatus !== 1) return;
+        if (frm.doc.docstatus !== 1) return;
+        if (frm.doc.status === "Paid") return;
 
-        // payment_gateway est le champ natif ERPNext du Payment Request
-        // ex: "PawaPay Gateway" ou "Flutterwave Gateway"
         const gateway = frm.doc.payment_gateway;
         if (!gateway) return;
 
+        // Bouton vérification manuelle — toujours visible sur un PR Requested
+        frm.add_custom_button(__("Vérifier le paiement"), () => {
+            _check_payment(frm);
+        }, __("Actions de paiement"));
+
+        // Bouton MoMo
         frm.add_custom_button(__("Lancer le Prompt MoMo"), () => {
             _show_momo_dialog(frm);
         }, __("Actions de paiement"));
     }
 });
+
+
+function _check_payment(frm) {
+    // console.log("Vérification du paiement pour le Payment Request:", frm.doc.name);
+    frappe.dom.freeze(__("Vérification du paiement en cours..."));
+    frappe.call({
+        method: "digikuntz_frappe_payment.api.payment.check_payment_status_by_pr",
+        args: { payment_request_name: frm.doc.name },
+        callback(r) {
+            frappe.dom.unfreeze();
+            const status = (r.message || {}).status || "error";
+            if (status === "successful") {
+                frappe.show_alert({ message: __("Paiement confirmé !"), indicator: "green" });
+                frm.reload_doc();
+            } else if (status === "pending") {
+                frappe.show_alert({ message: __("Paiement en attente de confirmation."), indicator: "orange" });
+            } else if (status === "failed") {
+                frappe.show_alert({ message: __("Paiement échoué ou annulé."), indicator: "red" });
+            } else {
+                frappe.show_alert({ message: __("Impossible de vérifier : Veuillez réessayer."), indicator: "red" });
+            }
+        },
+        error() {
+            frappe.dom.unfreeze();
+            frappe.show_alert({ message: __("Erreur lors de la vérification."), indicator: "red" });
+        }
+    });
+}
 
 
 function _show_momo_dialog(frm) {

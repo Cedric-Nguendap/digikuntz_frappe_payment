@@ -8,3 +8,11 @@ def delete_old_payment_redirects():
         {'creation': ('<', frappe.utils.add_days(frappe.utils.now_datetime(), -30))}
     )
     frappe.db.commit()
+
+
+def on_payment_request_cancel(doc, method=None):
+    """Supprime le Payment Redirect lié quand un Payment Request est annulé."""
+    existing = frappe.db.get_value("Payment Redirect", {"payment_request": doc.name}, "name")
+    if existing:
+        frappe.delete_doc("Payment Redirect", existing, force=True, ignore_permissions=True)
+        frappe.db.commit()

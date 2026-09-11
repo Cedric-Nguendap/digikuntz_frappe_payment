@@ -35,3 +35,10 @@ scheduler_events = {
 before_install = "digikuntz_frappe_payment.setup.install.before_install"
 after_install = "digikuntz_frappe_payment.setup.install.after_install"
 after_uninstall = "digikuntz_frappe_payment.setup.install.after_uninstall"
+
+# Suppression du Payment Redirect à l'annulation du PR
+doc_events = {
+    "Payment Request": {
+        "on_cancel": "digikuntz_frappe_payment.services.cleanup.on_payment_request_cancel",
+    }
+}
