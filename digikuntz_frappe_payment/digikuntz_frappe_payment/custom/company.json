@@ -4,7 +4,7 @@
    "dt": "Company",
    "fieldname": "custom_digikuntz_payment_tab",
    "fieldtype": "Tab Break",
-   "label": "Digikuntz Payment Settings",
+   "label": "Digikuntz Payment",
    "insert_after": "dashboard_tab",
    "name": "Company-custom_digikuntz_payment_tab"
   },
@@ -12,11 +12,9 @@
    "dt": "Company",
    "fieldname": "custom_payment_gateway",
    "fieldtype": "Select",
-   "label": "Passerelle de paiement par défaut",
+   "label": "Passerelle de paiement",
    "options": "\nFlutterwave\nPawaPay",
    "insert_after": "custom_digikuntz_payment_tab",
-   "in_list_view": 1,
-   "reqd": 0,
    "name": "Company-custom_payment_gateway"
   },
   {
@@ -29,10 +27,136 @@
   },
   {
    "dt": "Company",
+   "fieldname": "custom_flutterwave_section",
+   "fieldtype": "Section Break",
+   "label": "Configuration Flutterwave",
+   "insert_after": "custom_payment_status_html",
+   "depends_on": "eval:doc.custom_payment_gateway == 'Flutterwave'",
+   "name": "Company-custom_flutterwave_section"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_fw_enable",
+   "fieldtype": "Check",
+   "label": "Activer Flutterwave",
+   "default": "1",
+   "insert_after": "custom_flutterwave_section",
+   "name": "Company-custom_fw_enable"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_fw_secret_key",
+   "fieldtype": "Small Text",
+   "label": "Secret Key",
+   "insert_after": "custom_fw_enable",
+   "name": "Company-custom_fw_secret_key"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_fw_webhook_secret",
+   "fieldtype": "Password",
+   "label": "Webhook Secret",
+   "insert_after": "custom_fw_secret_key",
+   "name": "Company-custom_fw_webhook_secret"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_fw_col_break",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_fw_webhook_secret",
+   "name": "Company-custom_fw_col_break"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_fw_public_key",
+   "fieldtype": "Data",
+   "label": "Public Key",
+   "insert_after": "custom_fw_col_break",
+   "name": "Company-custom_fw_public_key"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_fw_encryption_key",
+   "fieldtype": "Data",
+   "label": "Encryption Key",
+   "insert_after": "custom_fw_public_key",
+   "name": "Company-custom_fw_encryption_key"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_pawapay_section",
+   "fieldtype": "Section Break",
+   "label": "Configuration PawaPay",
+   "insert_after": "custom_fw_encryption_key",
+   "depends_on": "eval:doc.custom_payment_gateway == 'PawaPay'",
+   "name": "Company-custom_pawapay_section"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_pp_enable",
+   "fieldtype": "Check",
+   "label": "Activer PawaPay",
+   "default": "1",
+   "insert_after": "custom_pawapay_section",
+   "name": "Company-custom_pp_enable"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_pp_secret_key",
+   "fieldtype": "Small Text",
+   "label": "API Token",
+   "insert_after": "custom_pp_enable",
+   "name": "Company-custom_pp_secret_key"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_pp_webhook_secret",
+   "fieldtype": "Password",
+   "label": "Webhook Secret",
+   "insert_after": "custom_pp_secret_key",
+   "name": "Company-custom_pp_webhook_secret"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_pp_col_break",
+   "fieldtype": "Column Break",
+   "insert_after": "custom_pp_webhook_secret",
+   "name": "Company-custom_pp_col_break"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_pp_base_url",
+   "fieldtype": "Data",
+   "label": "API Base URL",
+   "default": "https://api.pawapay.io",
+   "insert_after": "custom_pp_col_break",
+   "name": "Company-custom_pp_base_url"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_pp_environment",
+   "fieldtype": "Select",
+   "label": "Environnement",
+   "options": "production\nsandbox",
+   "default": "production",
+   "insert_after": "custom_pp_base_url",
+   "name": "Company-custom_pp_environment"
+  },
+  {
+   "dt": "Company",
+   "fieldname": "custom_pp_default_country",
+   "fieldtype": "Data",
+   "label": "Pays par défaut (ISO alpha-3)",
+   "description": "Ex: CMR, SEN, CIV, GHA, ZMB",
+   "insert_after": "custom_pp_environment",
+   "name": "Company-custom_pp_default_country"
+  },
+  {
+   "dt": "Company",
    "fieldname": "custom_subaccount_section",
    "fieldtype": "Section Break",
    "label": "Sous-comptes",
-   "insert_after": "custom_payment_status_html",
+   "insert_after": "custom_pp_default_country",
    "depends_on": "eval:doc.custom_payment_gateway",
    "collapsible": 1,
    "name": "Company-custom_subaccount_section"

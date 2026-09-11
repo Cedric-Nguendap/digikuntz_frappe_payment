@@ -8,24 +8,48 @@ from digikuntz_frappe_payment.integrations.base_client import BasePaymentClient,
 
 class PawaPayClient(BasePaymentClient):
 
-    def __init__(self):
-        self.settings = frappe.get_single("Pawapay Settings")
-        self.base_url = (self.settings.base_url or "https://api.pawapay.io").rstrip("/")
-        self.secret_key = self.settings.get_password("secret_key")
+    def __init__(self, company=None):
+        self.company = company
+        self._load_config()
+
+    def _load_config(self):
+        if self.company:
+            doc = frappe.get_cached_doc("Company", self.company)
+            self.enabled = bool(doc.custom_pp_enable)
+            self.secret_key = doc.custom_pp_secret_key or ""
+            self.webhook_secret_val = doc.get_password("custom_pp_webhook_secret") if doc.custom_pp_webhook_secret else ""
+            self.base_url = (doc.custom_pp_base_url or "https://api.pawapay.io").rstrip("/")
+            self.default_country = doc.custom_pp_default_country or ""
+        else:
+            self.enabled = False
+            self.secret_key = ""
+            self.webhook_secret_val = ""
+            self.base_url = "https://api.pawapay.io"
+            self.default_country = ""
 
     def validate(self):
-        if not self.settings.enable_pawapay:
+        if not self.enabled:
             frappe.throw(
-                msg="PawaPay est desactive. Veuillez l'activer dans Pawapay Settings.",
+                msg="PawaPay est desactive pour cette société.",
                 title="PawaPay Inactif",
                 exc=frappe.ValidationError
             )
         if not self.secret_key:
             frappe.throw(
-                msg="PawaPay API Token est requis. Veuillez le configurer dans Pawapay Settings.",
+                msg="PawaPay API Token est requis. Veuillez le configurer dans les paramètres de la société.",
                 title="Configuration manquante",
                 exc=frappe.ValidationError
             )
+
+    def get_configuration_issues(self):
+        issues = []
+        if not self.enabled:
+            issues.append("PawaPay est désactivé.")
+        if not self.secret_key:
+            issues.append("API Token manquant.")
+        if not self.default_country:
+            issues.append("Pays par défaut (ISO alpha-3) manquant.")
+        return issues
 
     @property
     def _headers(self):
@@ -52,10 +76,10 @@ class PawaPayClient(BasePaymentClient):
 
     def initialize_web_payment(self, amount, email, tx_ref, redirect_url, currency="XAF", company=None, customer_name=None, callback_url=None):
         """Payment Page PawaPay v2 — POST /v2/paymentpage"""
-        country = self.settings.default_country or ""
+        country = self.default_country
         if not country:
             frappe.throw(
-                msg="Le pays par defaut (ISO alpha-3) est requis dans Pawapay Settings pour la Payment Page.",
+                msg="Le pays par défaut (ISO alpha-3) est requis dans les paramètres de la société.",
                 title="Configuration manquante",
                 exc=frappe.ValidationError
             )
@@ -87,7 +111,6 @@ class PawaPayClient(BasePaymentClient):
         deposit_id = str(uuid.uuid4())
         _store_pawapay_data(tx_ref, deposit_id)
 
-
         payload = {
             "depositId": deposit_id,
             "amount": str(int(amount)),
@@ -113,18 +136,18 @@ class PawaPayClient(BasePaymentClient):
     def verify_transaction(self, deposit_id):
         """GET /v2/deposits/:depositId — retourne une liste"""
         result = self._get(f"/v2/deposits/{deposit_id}")
-        
         if isinstance(result, tuple):
             return err(result[1])
-        frappe.logger().info(f"PawaPay verify_transaction raw response: {result}")
-        # L'API PawaPay v2 retourne une liste
+        frappe.logger().info(f"PawaPay verify_transaction raw: {result}")
         data = result[0] if isinstance(result, list) and result else result
-        if not data or data.get("status") == "NOT_FOUND":
+        if not data:
             return err(f"Deposit {deposit_id} not found")
-        
-        data = data.get("data")
+        status_val = data.get("status", "")
+        if status_val == "NOT_FOUND":
+            return err(f"Deposit {deposit_id} not found")
+        data  = data.get("data") or {}
         return ok({
-            "status": _normalize_pawapay_status(data.get("status", "")),
+            "status": _normalize_pawapay_status(data.get("status")),
             "tx_ref": _extract_tx_ref_from_message(data.get("customerMessage", ""))
         })
 
@@ -135,7 +158,7 @@ class PawaPayClient(BasePaymentClient):
         return self.verify_transaction(deposit_id)
 
     def verify_webhook_signature(self, payload, signature):
-        secret = self.settings.get_password("webhook_secret") or ""
+        secret = self.webhook_secret_val or ""
         if not secret:
             return True
         expected = hmac.new(secret.encode(), payload.encode() if isinstance(payload, str) else payload, hashlib.sha256).hexdigest()
@@ -178,17 +201,22 @@ def _extract_tx_ref_from_message(message):
     return message or None
 
 
-def _store_pawapay_data(tx_ref, deposit_id, redirect_url=None):
+def _store_pawapay_data(tx_ref, deposit_id):
+    """Stocke le deposit_id dans Payment Redirect pour le suivi MoMo."""
     try:
         pr_name = tx_ref.replace("PR-", "", 1)
         if not frappe.db.exists("Payment Request", pr_name):
             return
-        existing = frappe.db.get_value("Payment Request", pr_name, "message") or ""
-        lines = [l for l in existing.split("\n") if not l.startswith("pawapay_")]
-        lines.append(f"pawapay_deposit_id:{deposit_id}")
-        if redirect_url:
-            lines.append(f"pawapay_redirect_url:{redirect_url}")
-        frappe.db.set_value("Payment Request", pr_name, "message", "\n".join(lines).strip(), update_modified=False)
+        existing = frappe.db.get_value("Payment Redirect", {"payment_request": pr_name}, "name")
+        if existing:
+            frappe.db.set_value("Payment Redirect", existing, "deposit_id", deposit_id)
+        else:
+            frappe.get_doc({
+                "doctype": "Payment Redirect",
+                "payment_request": pr_name,
+                "redirect_url": "/payment-success",
+                "deposit_id": deposit_id,
+            }).insert(ignore_permissions=True)
         frappe.db.commit()
     except Exception:
         pass
@@ -205,10 +233,8 @@ def _get_redirect_url(tx_ref):
 def _get_pawapay_field(tx_ref, key):
     try:
         pr_name = tx_ref.replace("PR-", "", 1)
-        data = frappe.db.get_value("Payment Request", pr_name, "message") or ""
-        for line in data.split("\n"):
-            if line.startswith(f"{key}:"):
-                return line.split(":", 1)[1].strip()
+        if key == "pawapay_deposit_id":
+            return frappe.db.get_value("Payment Redirect", {"payment_request": pr_name}, "deposit_id") or None
     except Exception:
         pass
     return None

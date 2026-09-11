@@ -6,24 +6,47 @@ from digikuntz_frappe_payment.integrations.base_client import BasePaymentClient,
 
 class FlutterwaveClient(BasePaymentClient):
 
-    def __init__(self):
-        self.settings = frappe.get_single("Flutterwave Settings")
+    def __init__(self, company=None):
+        self.company = company
+        self._load_config()
+
+    def _load_config(self):
+        if self.company:
+            doc = frappe.get_cached_doc("Company", self.company)
+            self.enabled = bool(doc.custom_fw_enable)
+            self.secret_key = doc.custom_fw_secret_key or ""
+            self.public_key = doc.custom_fw_public_key or ""
+            self.webhook_secret = doc.get_password("custom_fw_webhook_secret") if doc.custom_fw_webhook_secret else ""
+        else:
+            self.enabled = False
+            self.secret_key = ""
+            self.public_key = ""
+            self.webhook_secret = ""
         self.base_url = "https://api.flutterwave.com/v3"
-        self.secret_key = self.settings.get_password("secret_key")
 
     def validate(self):
-        if not self.settings.enable_flutterwave:
+        if not self.enabled:
             frappe.throw(
-                msg="Flutterwave est désactivé. Veuillez l'activer dans Flutterwave Settings.",
+                msg="Flutterwave est désactivé pour cette société.",
                 title="Flutterwave Inactif",
                 exc=frappe.ValidationError
             )
-        if not self.secret_key or not self.settings.public_key:
+        if not self.secret_key or not self.public_key:
             frappe.throw(
                 msg="Flutterwave n'est pas configuré. Secret Key et Public Key sont requis.",
                 title="Configuration manquante",
                 exc=frappe.ValidationError
             )
+
+    def get_configuration_issues(self):
+        issues = []
+        if not self.enabled:
+            issues.append("Flutterwave est désactivé.")
+        if not self.secret_key:
+            issues.append("Secret Key manquante.")
+        if not self.public_key:
+            issues.append("Public Key manquante.")
+        return issues
 
     @property
     def _headers(self):
@@ -57,8 +80,9 @@ class FlutterwaveClient(BasePaymentClient):
             "customer": {"email": email, "name": customer_name or email},
             "customizations": {"title": "ERPNext Payment", "description": "Invoice Payment"}
         }
-        if utils_func.should_use_subaccount(company):
-            subaccount_id = utils_func.get_subaccount_id(company)
+        c = company or self.company
+        if utils_func.should_use_subaccount(c):
+            subaccount_id = utils_func.get_subaccount_id(c)
             if subaccount_id:
                 payload["subaccounts"] = [{"id": subaccount_id}]
 
@@ -82,8 +106,9 @@ class FlutterwaveClient(BasePaymentClient):
             "network": network,
             "redirect_url": redirect_url
         }
-        if utils_func.should_use_subaccount(company):
-            subaccount_id = utils_func.get_subaccount_id(company)
+        c = company or self.company
+        if utils_func.should_use_subaccount(c):
+            subaccount_id = utils_func.get_subaccount_id(c)
             if subaccount_id:
                 payload["subaccounts"] = [{"id": subaccount_id}]
 
@@ -99,6 +124,7 @@ class FlutterwaveClient(BasePaymentClient):
         if isinstance(result, tuple):
             return err(result[1])
         data = result.get("data") or {}
+        print("Flutterwave ",data)
         return ok({
             "status": "successful" if data.get("status") == "successful" else data.get("status", "pending"),
             "tx_ref": data.get("tx_ref", "")
@@ -115,8 +141,7 @@ class FlutterwaveClient(BasePaymentClient):
         })
 
     def verify_webhook_signature(self, payload, signature):
-        secret_hash = self.settings.get_password("webhook_secret") or ""
-        if secret_hash and signature != secret_hash:
+        if self.webhook_secret and signature != self.webhook_secret:
             return False
         return True
 

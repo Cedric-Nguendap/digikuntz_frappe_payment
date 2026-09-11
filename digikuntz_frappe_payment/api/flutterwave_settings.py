@@ -24,7 +24,7 @@ def trigger_gateway_setup(company):
     if not gateway:
         frappe.throw("Aucune passerelle sélectionnée sur cette société.")
     try:
-        ensure_gateway_setup(gateway)
+        ensure_gateway_setup(gateway, company=company)
         return {"status": "success", "message": f"Configuration {gateway} vérifiée et complétée."}
     except Exception as e:
         frappe.log_error(frappe.get_traceback(), f"Gateway setup error: {gateway}")

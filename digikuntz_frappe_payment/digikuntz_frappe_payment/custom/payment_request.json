@@ -1,0 +1,19 @@
+{
+ "custom_fields": [
+  {
+   "dt": "Payment Request",
+   "fieldname": "custom_payment_gateway",
+   "fieldtype": "Select",
+   "label": "Passerelle de paiement",
+   "options": "\nFlutterwave\nPawaPay",
+   "insert_after": "payment_gateway_account",
+   "name": "Payment Request-custom_payment_gateway",
+   "description": "Laissez vide pour utiliser la passerelle configurée sur la société"
+  }
+ ],
+ "custom_perms": [],
+ "doctype": "Payment Request",
+ "links": [],
+ "property_setters": [],
+ "sync_on_migrate": 1
+}

@@ -52,31 +52,17 @@ def get_subaccount_infos(company, subaccount_name):
 
 @frappe.whitelist()
 def check_gateway_config(company):
-    """
-    Vérifie que la passerelle configurée sur la company est correctement paramétrée.
-    Retourne les éléments manquants sans if/elif par gateway.
-    """
     gateway = frappe.get_cached_value("Company", company, "custom_payment_gateway")
     if not gateway:
         return {"status": "error", "message": "Aucune passerelle sélectionnée."}
-
     if gateway not in GATEWAY_REGISTRY:
         return {"status": "error", "message": f"Passerelle inconnue : {gateway}"}
 
     config = get_gateway_config(gateway)
-    issues = []
-
-    # Vérification des clés API via le doctype Settings
-    settings = frappe.get_single(config["settings_doctype"])
-    issues += settings.get_configuration_issues()
-
-    if not frappe.db.exists("Payment Gateway", config["gateway_name"]):
-        issues.append(f"Payment Gateway '{config['gateway_name']}' non créée. Relancez l'installation.")
-
-    if not frappe.db.exists("Mode of Payment", config["mop_name"]):
-        issues.append(f"Mode de paiement '{config['mop_name']}' non créé. Relancez l'installation.")
+    ClientClass = frappe.get_attr(config["client_class"])
+    client = ClientClass(company=company)
+    issues = client.get_configuration_issues()
 
     if issues:
-        return {"status": "warning", "issues": issues, "gateway": gateway, "settings_doctype": config["settings_doctype"]}
-
-    return {"status": "success", "gateway": gateway, "settings_doctype": config["settings_doctype"]}
+        return {"status": "warning", "issues": issues, "gateway": gateway}
+    return {"status": "success", "gateway": gateway}

@@ -2,21 +2,19 @@ frappe.ui.form.on("Payment Request", {
     refresh(frm) {
         if (frm.doc.status === "Paid" || frm.doc.docstatus !== 1) return;
 
-        // Vérifier la passerelle configurée sur la company du Payment Request
-        frappe.db.get_value("Company", frm.doc.company, "custom_payment_gateway").then(r => {
-            const gateway = r.message && r.message.custom_payment_gateway;
-            if (!gateway) return;
+        // payment_gateway est le champ natif ERPNext du Payment Request
+        // ex: "PawaPay Gateway" ou "Flutterwave Gateway"
+        const gateway = frm.doc.payment_gateway;
+        if (!gateway) return;
 
-            // Le bouton MoMo est disponible pour Flutterwave et PawaPay
-            frm.add_custom_button(__("Lancer le Prompt MoMo"), () => {
-                _show_momo_dialog(frm, gateway);
-            }, __("Actions de paiement"));
-        });
+        frm.add_custom_button(__("Lancer le Prompt MoMo"), () => {
+            _show_momo_dialog(frm);
+        }, __("Actions de paiement"));
     }
 });
 
 
-function _show_momo_dialog(frm, gateway) {
+function _show_momo_dialog(frm) {
     const d = new frappe.ui.Dialog({
         title: __("Initiation Mobile Money"),
         fields: [

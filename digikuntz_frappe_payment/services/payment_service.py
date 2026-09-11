@@ -6,8 +6,8 @@ import digikuntz_frappe_payment.services.utils as utils_func
 
 class PaymentService:
 
-    def __init__(self, company=None):
-        self.payment_mode = PaymentClientFactory.get_payment_client(company=company)
+    def __init__(self, company=None, gateway=None):
+        self.payment_mode = PaymentClientFactory.get_payment_client(company=company, gateway=gateway)
         self.mode_name = self.payment_mode["mode"]
         self.client = self.payment_mode["client"]
 

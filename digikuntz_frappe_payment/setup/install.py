@@ -52,12 +52,13 @@ def after_uninstall():
     print("Digikuntz Frappe Payment désinstallé.")
 
 
-def ensure_gateway_setup(gateway):
+def ensure_gateway_setup(gateway, company=None):
     """
     Crée si nécessaire : Payment Gateway, Mode of Payment, Account, Payment Gateway Account.
     Appelé à l'installation ET lors de la sélection d'une passerelle sur la Company.
     """
-    company = frappe.defaults.get_global_default("company")
+    if not company:
+        company = frappe.defaults.get_global_default("company")
     if not company:
         return
 
@@ -65,7 +66,7 @@ def ensure_gateway_setup(gateway):
     controller = "digikuntz_frappe_payment.services.payment_gateway.DigikuntzPaymentGateway"
 
     account = _get_or_create_account(config["account_name"], company)
-    _create_payment_gateway(config["gateway_name"], config["settings_doctype"], controller)
+    _create_payment_gateway(config["gateway_name"], controller)
     _create_mode_of_payment(config["mop_name"], company, account)
     _create_payment_gateway_account(config["gateway_name"], account, company)
 
@@ -95,13 +96,12 @@ def _get_or_create_account(account_name, company):
     return account.name
 
 
-def _create_payment_gateway(gateway_name, settings_doctype, controller):
+def _create_payment_gateway(gateway_name, controller):
     if frappe.db.exists("Payment Gateway", gateway_name):
         return
     frappe.get_doc({
         "doctype": "Payment Gateway",
         "gateway": gateway_name,
-        "gateway_settings": settings_doctype,
         "gateway_controller": controller
     }).insert(ignore_permissions=True, ignore_links=True)
     frappe.db.commit()

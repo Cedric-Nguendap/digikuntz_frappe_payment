@@ -1,15 +1,16 @@
 import frappe
-from digikuntz_frappe_payment.integrations.gateway_registry import get_gateway_config
+from digikuntz_frappe_payment.integrations.gateway_registry import get_gateway_config, resolve_gateway_from_pr
 
 
 class PaymentClientFactory:
 
     @staticmethod
-    def get_payment_client(company=None):
+    def get_payment_client(company=None, gateway=None):
         if not company:
             company = frappe.form_dict.get("company")
 
-        gateway = frappe.get_cached_value("Company", company, "custom_payment_gateway") if company else None
+        if not gateway:
+            gateway = frappe.get_cached_value("Company", company, "custom_payment_gateway") if company else None
 
         if not gateway:
             frappe.throw(
@@ -21,6 +22,6 @@ class PaymentClientFactory:
 
         config = get_gateway_config(gateway)
         ClientClass = frappe.get_attr(config["client_class"])
-        client = ClientClass()
+        client = ClientClass(company=company)
         client.validate()
         return {"client": client, "mode": gateway}

@@ -54,3 +54,13 @@ def get_gateway_config(gateway_name):
 def get_all_gateway_names():
     """Retourne la liste des noms de gateways enregistrées."""
     return list(GATEWAY_REGISTRY.keys())
+
+
+def resolve_gateway_from_pr(payment_gateway_field):
+    """Résout la clé registry depuis le champ payment_gateway du Payment Request.
+    Ex: 'PawaPay Gateway' -> 'PawaPay', 'Flutterwave Gateway' -> 'Flutterwave'
+    """
+    for key, config in GATEWAY_REGISTRY.items():
+        if config.get("gateway_name") == payment_gateway_field:
+            return key
+    return None

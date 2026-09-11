@@ -1,16 +1,20 @@
 frappe.ui.form.on("Company", {
 
     refresh(frm) {
-        // Toujours afficher le statut si une gateway est sélectionnée
+        // Supprimer le bouton obsolète vers les paramètres globaux
+        frm.remove_custom_button(__("Paramètres de la passerelle"), __("Digikuntz Payment"));
+
         if (frm.doc.custom_payment_gateway) {
             _render_gateway_status(frm);
+            if (frm.doc.custom_payment_gateway === "Flutterwave") {
+                frm.add_custom_button(__("Sync Sous-comptes"), () => _sync_subaccounts(frm), __("Digikuntz Payment"));
+            }
         } else {
             _render_no_gateway(frm);
         }
     },
 
     custom_payment_gateway(frm) {
-        // Réinitialiser les sous-comptes à chaque changement de gateway
         frm.set_value("custom_sous_compte_par_defaut", "");
         frm.set_value("custom_sous_compte_pawapay", "");
         frm.set_value("custom_banque", "");
@@ -21,7 +25,6 @@ frappe.ui.form.on("Company", {
             return;
         }
 
-        // 1. Créer les ressources ERPNext manquantes (Payment Gateway, MoP, Account)
         frappe.call({
             method: "digikuntz_frappe_payment.api.flutterwave_settings.trigger_gateway_setup",
             args: { company: frm.doc.name },
@@ -32,7 +35,6 @@ frappe.ui.form.on("Company", {
                 if (r.message.status === "error") {
                     frappe.msgprint({ title: __("Erreur"), message: __(r.message.message), indicator: "red" });
                 }
-                // 2. Vérifier et afficher le statut dans tous les cas
                 _render_gateway_status(frm);
             }
         });
@@ -48,82 +50,47 @@ frappe.ui.form.on("Company", {
 });
 
 
-// ─── Rendu du statut de configuration ────────────────────────────────────────
-
 function _render_no_gateway(frm) {
     $(frm.fields_dict["custom_payment_status_html"].wrapper).html(
         `<div class="alert alert-warning" style="margin:8px 0">
             <b>⚠</b> Aucune passerelle sélectionnée. Choisissez une passerelle ci-dessus.
         </div>`
     );
-    // Retirer les boutons liés à la gateway
-    frm.remove_custom_button(__("Paramètres de la passerelle"));
-    frm.remove_custom_button(__("Sync Sous-comptes"));
 }
 
 
 function _render_gateway_status(frm) {
-    frappe.call({
-        method: "digikuntz_frappe_payment.api.company.check_gateway_config",
-        args: { company: frm.doc.name },
-        callback(r) {
-            if (r.exc || !r.message) return;
-            const data = r.message;
+    const gw = frm.doc.custom_payment_gateway;
+    let issues = [];
 
-            _render_status_html(frm, data);
-            _render_gateway_buttons(frm, data);
-        }
-    });
-}
+    if (gw === "Flutterwave") {
+        if (!frm.doc.custom_fw_enable) issues.push("Flutterwave est désactivé.");
+        if (!frm.doc.custom_fw_secret_key) issues.push("Secret Key manquante.");
+        if (!frm.doc.custom_fw_public_key) issues.push("Public Key manquante.");
+    } else if (gw === "PawaPay") {
+        if (!frm.doc.custom_pp_enable) issues.push("PawaPay est désactivé.");
+        if (!frm.doc.custom_pp_secret_key) issues.push("API Token manquant.");
+        if (!frm.doc.custom_pp_default_country) issues.push("Pays par défaut (ISO alpha-3) manquant.");
+    }
 
-
-function _render_status_html(frm, data) {
     const wrapper = $(frm.fields_dict["custom_payment_status_html"].wrapper);
-
-    if (data.status === "success") {
+    if (issues.length === 0) {
         wrapper.html(
             `<div class="alert alert-success" style="margin:8px 0">
-                <b>✔ ${__(data.gateway)} est configuré et opérationnel.</b>
+                <b>✔ ${__(gw)} est configuré et opérationnel.</b>
             </div>`
         );
-    } else if (data.status === "warning") {
-        const items = (data.issues || []).map(i => `<li>${__(i)}</li>`).join("");
+    } else {
+        const items = issues.map(i => `<li>${__(i)}</li>`).join("");
         wrapper.html(
             `<div class="alert alert-warning" style="margin:8px 0">
                 <b>⚠ Configuration incomplète :</b>
                 <ul style="margin:6px 0 0 0">${items}</ul>
             </div>`
         );
-    } else {
-        wrapper.html(
-            `<div class="alert alert-danger" style="margin:8px 0">
-                <b>✖ ${__(data.message || "Erreur de configuration")}</b>
-            </div>`
-        );
     }
 }
 
-
-function _render_gateway_buttons(frm, data) {
-    // Bouton vers les paramètres de la gateway sélectionnée
-    frm.remove_custom_button(__("Paramètres de la passerelle"));
-    if (data.settings_doctype) {
-        frm.add_custom_button(__("Paramètres de la passerelle"), () => {
-            frappe.set_route("Form", data.settings_doctype);
-        }, __("Digikuntz Payment"));
-    }
-
-    // Bouton sync sous-comptes (seulement si gateway opérationnelle)
-    frm.remove_custom_button(__("Sync Sous-comptes"));
-    if (data.status === "success") {
-        frm.add_custom_button(__("Sync Sous-comptes"), () => {
-            _sync_subaccounts(frm);
-        }, __("Digikuntz Payment"));
-    }
-}
-
-
-// ─── Sous-comptes ─────────────────────────────────────────────────────────────
 
 function _load_subaccount_infos(frm, subaccount_name) {
     if (!subaccount_name) {
