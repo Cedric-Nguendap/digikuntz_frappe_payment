@@ -85,8 +85,8 @@ class PawaPayClient(BasePaymentClient):
             "reason": tx_ref,
             "language": "FR"
         }
-        if callback_url:
-            payload["notificationUrl"] = callback_url
+        # if callback_url:
+        #     payload["notificationUrl"] = callback_url
 
         result = self._post("/v2/paymentpage", payload)
         if isinstance(result, tuple):
@@ -175,6 +175,42 @@ class PawaPayClient(BasePaymentClient):
             for p in (c.get("providers") or []):
                 banks.append({"name": p.get("provider"), "code": p.get("provider")})
         return ok({"banks": banks})
+
+    def get_momo_operators(self, country="CM"):
+        """Retourne les operateurs Mobile Money disponibles pour un pays."""
+        # Flutterwave n'a pas d'endpoint dédié pour les opérateurs MoMo franco
+        # Liste statique basée sur la doc Flutterwave mobile_money_franco
+        operators_by_country = {
+            "CM": [
+                {"name": "MTN Mobile Money", "code": "MTN"},
+                {"name": "Orange Money", "code": "ORANGE"},
+            ],
+            "SN": [
+                {"name": "Orange Money", "code": "ORANGE"},
+                {"name": "Free Money", "code": "FREE"},
+                {"name": "Wave", "code": "WAVE"},
+            ],
+            "CI": [
+                {"name": "MTN Mobile Money", "code": "MTN"},
+                {"name": "Orange Money", "code": "ORANGE"},
+                {"name": "Wave", "code": "WAVE"},
+            ],
+            "GH": [
+                {"name": "MTN Mobile Money", "code": "MTN"},
+                {"name": "Vodafone Cash", "code": "VODAFONE"},
+                {"name": "AirtelTigo Money", "code": "TIGO"},
+            ],
+            "ZM": [
+                {"name": "MTN Mobile Money", "code": "MTN"},
+                {"name": "Airtel Money", "code": "AIRTEL"},
+                {"name": "Zamtel Money", "code": "ZAMTEL"},
+            ],
+        }
+        ops = operators_by_country.get(country.upper(), [
+            {"name": "MTN Mobile Money", "code": "MTN"},
+            {"name": "Orange Money", "code": "ORANGE"}
+        ])
+        return ok({"banks": ops})
 
 
 # --- Helpers ---
