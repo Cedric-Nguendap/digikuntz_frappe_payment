@@ -8,6 +8,7 @@ def get_context(context):
     if not pr_name or not frappe.db.exists("Payment Request", pr_name):
         frappe.throw("Payment Request introuvable.", frappe.DoesNotExistError)
 
+    context.pr_name = pr_name
     pr = frappe.db.get_value(
         "Payment Request",
         pr_name,
