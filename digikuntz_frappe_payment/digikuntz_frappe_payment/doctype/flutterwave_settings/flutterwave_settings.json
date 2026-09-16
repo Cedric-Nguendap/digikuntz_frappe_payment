@@ -5,6 +5,7 @@
  "engine": "InnoDB",
  "field_order": [
   "enable_flutterwave",
+  "payment_mode",
   "secret_key",
   "webhook_secret",
   "column_break_1",
@@ -17,6 +18,14 @@
    "fieldname": "enable_flutterwave",
    "fieldtype": "Check",
    "label": "Activer"
+  },
+  {
+   "default": "web",
+   "fieldname": "payment_mode",
+   "fieldtype": "Select",
+   "label": "Mode de paiement",
+   "options": "web\nprompt",
+   "reqd": 1
   },
   {
    "fieldname": "secret_key",

@@ -17,11 +17,13 @@ class FlutterwaveClient(BasePaymentClient):
             self.secret_key = doc.custom_fw_secret_key or ""
             self.public_key = doc.custom_fw_public_key or ""
             self.webhook_secret = doc.get_password("custom_fw_webhook_secret") if doc.custom_fw_webhook_secret else ""
+            self.default_country = doc.custom_fw_default_country or "CM"
         else:
             self.enabled = False
             self.secret_key = ""
             self.public_key = ""
             self.webhook_secret = ""
+            self.default_country = "CM"
         self.base_url = "https://api.flutterwave.com/v3"
 
     def validate(self):
@@ -58,7 +60,8 @@ class FlutterwaveClient(BasePaymentClient):
     def _post(self, endpoint, payload):
         try:
             r = requests.post(f"{self.base_url}{endpoint}", json=payload, headers=self._headers, timeout=30)
-            r.raise_for_status()
+            if not r.ok:
+                return None, f"{r.status_code}: {r.text[:300]}"
             return r.json()
         except requests.exceptions.RequestException as e:
             return None, str(e)
@@ -66,7 +69,8 @@ class FlutterwaveClient(BasePaymentClient):
     def _get(self, endpoint, params=None):
         try:
             r = requests.get(f"{self.base_url}{endpoint}", params=params, headers=self._headers, timeout=30)
-            r.raise_for_status()
+            if not r.ok:
+                return None, f"{r.status_code}: {r.text[:300]}"
             return r.json()
         except requests.exceptions.RequestException as e:
             return None, str(e)
@@ -113,6 +117,7 @@ class FlutterwaveClient(BasePaymentClient):
                 payload["subaccounts"] = [{"id": subaccount_id}]
 
         result = self._post("/charges?type=mobile_money_franco", payload)
+        print("Result Flutterwave",result)
         if isinstance(result, tuple):
             return err(result[1])
         if result.get("status") != "success":
@@ -156,6 +161,42 @@ class FlutterwaveClient(BasePaymentClient):
             return err(result[1])
         banks = [{"name": b.get("name"), "code": b.get("code")} for b in (result.get("data") or [])]
         return ok({"banks": banks})
+
+    def get_momo_operators(self, country="CM"):
+        """Retourne les operateurs Mobile Money disponibles pour un pays."""
+        # Flutterwave n'a pas d'endpoint dédié pour les opérateurs MoMo franco
+        # Liste statique basée sur la doc Flutterwave mobile_money_franco
+        operators_by_country = {
+            "CM": [
+                {"name": "MTN Mobile Money", "code": "MTN"},
+                {"name": "Orange Money", "code": "ORANGE"},
+            ],
+            "SN": [
+                {"name": "Orange Money", "code": "ORANGE"},
+                {"name": "Free Money", "code": "FREE"},
+                {"name": "Wave", "code": "WAVE"},
+            ],
+            "CI": [
+                {"name": "MTN Mobile Money", "code": "MTN"},
+                {"name": "Orange Money", "code": "ORANGE"},
+                {"name": "Wave", "code": "WAVE"},
+            ],
+            "GH": [
+                {"name": "MTN Mobile Money", "code": "MTN"},
+                {"name": "Vodafone Cash", "code": "VODAFONE"},
+                {"name": "AirtelTigo Money", "code": "TIGO"},
+            ],
+            "ZM": [
+                {"name": "MTN Mobile Money", "code": "MTN"},
+                {"name": "Airtel Money", "code": "AIRTEL"},
+                {"name": "Zamtel Money", "code": "ZAMTEL"},
+            ],
+        }
+        ops = operators_by_country.get(country.upper(), [
+            {"name": "MTN Mobile Money", "code": "MTN"},
+            {"name": "Orange Money", "code": "ORANGE"}
+        ])
+        return ok({"banks": ops})
 
     def get_all_subaccount(self):
         result = self._get("/subaccounts")

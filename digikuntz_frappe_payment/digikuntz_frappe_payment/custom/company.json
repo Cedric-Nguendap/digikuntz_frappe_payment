@@ -19,6 +19,18 @@
   },
   {
    "dt": "Company",
+   "fieldname": "custom_payment_mode",
+   "fieldtype": "Select",
+   "label": "Mode de paiement",
+   "options": "web\nprompt",
+   "default": "web",
+   "insert_after": "custom_payment_gateway",
+   "depends_on": "eval:doc.custom_payment_gateway",
+   "description": "web = redirection vers la page de paiement de la gateway | prompt = page de saisie interne Mobile Money",
+   "name": "Company-custom_payment_mode"
+  },
+  {
+   "dt": "Company",
    "fieldname": "custom_payment_status_html",
    "fieldtype": "HTML",
    "label": "Statut de configuration",
@@ -84,10 +96,20 @@
   },
   {
    "dt": "Company",
+   "fieldname": "custom_fw_default_country",
+   "fieldtype": "Data",
+   "label": "Default Country (ISO alpha-2)",
+   "insert_after": "custom_fw_encryption_key",
+   "depends_on": "eval:doc.custom_payment_gateway == 'Flutterwave'",
+   "description": "Ex: CM, SN, CI, GH, ZM",
+   "name": "Company-custom_fw_default_country"
+  },
+  {
+   "dt": "Company",
    "fieldname": "custom_pawapay_section",
    "fieldtype": "Section Break",
    "label": "Configuration PawaPay",
-   "insert_after": "custom_fw_encryption_key",
+   "insert_after": "custom_fw_default_country",
    "depends_on": "eval:doc.custom_payment_gateway == 'PawaPay'",
    "name": "Company-custom_pawapay_section"
   },

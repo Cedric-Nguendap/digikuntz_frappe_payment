@@ -22,7 +22,7 @@
    "fieldname": "redirect_url",
    "fieldtype": "Text",
    "label": "Redirect URL",
-   "reqd": 1
+   "reqd": 0
   },
   {
    "fieldname": "deposit_id",

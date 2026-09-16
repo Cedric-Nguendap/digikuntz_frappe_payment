@@ -5,6 +5,7 @@
  "engine": "InnoDB",
  "field_order": [
   "enable_pawapay",
+  "payment_mode",
   "secret_key",
   "webhook_secret",
   "column_break_1",
@@ -18,6 +19,14 @@
    "fieldname": "enable_pawapay",
    "fieldtype": "Check",
    "label": "Activer PawaPay"
+  },
+  {
+   "default": "web",
+   "fieldname": "payment_mode",
+   "fieldtype": "Select",
+   "label": "Mode de paiement",
+   "options": "web\nprompt",
+   "reqd": 1
   },
   {
    "fieldname": "secret_key",

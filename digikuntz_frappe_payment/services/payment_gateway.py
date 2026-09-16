@@ -14,9 +14,16 @@ class DigikuntzPaymentGateway:
         company = kwargs.get("company")
 
         doc = frappe.get_doc(reference_doctype, reference_docname)
-        gateway = resolve_gateway_from_pr(doc.get("payment_gateway")) or None
-        service = PaymentService(company=company or doc.company, gateway=gateway)
+        gateway_key = resolve_gateway_from_pr(doc.get("payment_gateway")) or None
+        service = PaymentService(company=company or doc.company, gateway=gateway_key)
 
+        payment_mode = _get_payment_mode(gateway_key, company or doc.company)
+
+        if payment_mode == "prompt":
+            # Pas d'appel API ici — la page checkout gère tout
+            return frappe.utils.get_url(f"/checkout?pr={reference_docname}")
+
+        # Mode web : appel API gateway, stocke le redirect, retourne /pay
         response = service.create_payment_link(doc, payer_email=kwargs.get("payer_email"))
         data = response.get("data") or {}
 
@@ -27,6 +34,18 @@ class DigikuntzPaymentGateway:
             _store_redirect(reference_docname, gateway_redirect, deposit_id)
 
         return frappe.utils.get_url(f"/pay?pr={reference_docname}")
+
+
+def _get_payment_mode(gateway_key, company):
+    """Lit custom_payment_mode sur la Company — source de verite unique."""
+    try:
+        if company:
+            company_name = company if isinstance(company, str) else company.name
+            mode = frappe.db.get_value("Company", company_name, "custom_payment_mode")
+            return mode or "web"
+    except Exception:
+        pass
+    return "web"
 
 
 def _store_redirect(pr_name, redirect_url, deposit_id=""):

@@ -87,6 +87,10 @@ class BasePaymentClient(ABC):
         """Retourne ok({"subaccount": {}}) si non supporté."""
         return ok({"subaccount": {}})
 
+    def get_momo_operators(self, country="CM"):
+        """Retourne les opérateurs MoMo. Par défaut délègue à get_banks."""
+        return self.get_banks(country)
+
     def create_subaccount(self, company, account_bank, account_number, business_email):
         """Lève une exception si non supporté."""
         import frappe

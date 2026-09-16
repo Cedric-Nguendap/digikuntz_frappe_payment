@@ -1,7 +1,15 @@
 import frappe
+from frappe.utils import validate_email_address
 
 from digikuntz_frappe_payment.integrations.payment_client_factory import PaymentClientFactory
 import digikuntz_frappe_payment.services.utils as utils_func
+
+
+def _resolve_email(ref):
+    for v in [ref.get('email_to'), ref.get('contact_email'), ref.get('owner')]:
+        if v and validate_email_address(v):
+            return v
+    return None
 
 
 class PaymentService:
@@ -21,12 +29,12 @@ class PaymentService:
         redirect_url = base_url + "/payment-success?pr=" + reference_doc.name
         callback_url = base_url + "/api/method/digikuntz_frappe_payment.api.webhook.payment_webhook"
 
-        email = payer_email or reference_doc.email_to or reference_doc.contact_email or reference_doc.owner
+        email = payer_email if payer_email and validate_email_address(payer_email) else _resolve_email(reference_doc)
         customer = reference_doc.party or reference_doc.customer_name
         company = frappe.get_doc("Company", reference_doc.company)
 
-        if not email or "@" not in email:
-            frappe.throw(f"Customer email is required for {self.mode_name} payment")
+        if not email:
+            frappe.throw(f"A valid customer email is required for {self.mode_name} payment")
 
         response = self.client.initialize_web_payment(
             amount=amount,
@@ -45,14 +53,17 @@ class PaymentService:
 
     def mobile_money_charge(self, reference_doc, phone_number, network):
         amount = reference_doc.grand_total or 0
-        email = reference_doc.email_to or reference_doc.contact_email or reference_doc.owner
+        email = _resolve_email(reference_doc)
         customer = reference_doc.party or reference_doc.customer_name
-        company = frappe.get_doc("Company", reference_doc.company)
+        company_doc = frappe.get_doc("Company", reference_doc.company)
 
         base_url = frappe.utils.get_url()
         redirect_url = base_url + "/payment-success?pr=" + reference_doc.name
         callback_url = base_url + "/api/method/digikuntz_frappe_payment.api.webhook.payment_webhook"
         tx_ref = f"PR-{reference_doc.name}"
+
+        # default_country est defini sur chaque client (alpha-2 FW, alpha-3 PawaPay)
+        country = getattr(self.client, 'default_country', None) or "CM"
 
         response = self.client.initialize_mobile_money_payment(
             amount=amount,
@@ -60,8 +71,9 @@ class PaymentService:
             tx_ref=tx_ref,
             phone_number=phone_number,
             network=network,
+            country=country,
             customer_name=customer,
-            company=company,
+            company=company_doc,
             redirect_url=redirect_url,
             callback_url=callback_url,
             currency=reference_doc.currency

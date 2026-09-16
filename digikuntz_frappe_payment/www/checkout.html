@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Paiement — {{ pr.grand_total | int }} {{ pr.currency }}</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f6fa; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { background: #fff; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,.08); padding: 40px 36px; width: 100%; max-width: 420px; }
+  .logo { text-align: center; margin-bottom: 24px; font-size: 22px; font-weight: 700; color: #1a1a2e; }
+  .amount { text-align: center; font-size: 36px; font-weight: 800; color: #2563eb; margin-bottom: 4px; }
+  .party { text-align: center; color: #6b7280; font-size: 14px; margin-bottom: 28px; }
+  label { display: block; font-size: 13px; font-weight: 600; color: #374151; margin-bottom: 6px; }
+  input, select { width: 100%; padding: 11px 14px; border: 1.5px solid #d1d5db; border-radius: 8px; font-size: 15px; outline: none; transition: border .2s; }
+  input:focus, select:focus { border-color: #2563eb; }
+  .field { margin-bottom: 18px; }
+  button { width: 100%; padding: 13px; background: #2563eb; color: #fff; border: none; border-radius: 8px; font-size: 16px; font-weight: 600; cursor: pointer; transition: background .2s; }
+  button:hover:not(:disabled) { background: #1d4ed8; }
+  button:disabled { background: #93c5fd; cursor: not-allowed; }
+  .status { margin-top: 20px; padding: 14px; border-radius: 8px; font-size: 14px; text-align: center; display: none; }
+  .status.info    { background: #eff6ff; color: #1d4ed8; display: block; }
+  .status.success { background: #f0fdf4; color: #15803d; display: block; }
+  .status.error   { background: #fef2f2; color: #dc2626; display: block; }
+  .spinner { display: inline-block; width: 16px; height: 16px; border: 2px solid currentColor; border-top-color: transparent; border-radius: 50%; animation: spin .7s linear infinite; vertical-align: middle; margin-right: 6px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .ref { text-align: center; color: #9ca3af; font-size: 11px; margin-top: 24px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="logo">💳 Paiement sécurisé</div>
+  <div class="amount">{{ pr.grand_total | int }} {{ pr.currency }}</div>
+  <div class="party">{{ pr.party_name or pr.party }}</div>
+
+  <div id="form-section">
+    <div class="field">
+      <label>Numéro de téléphone Mobile Money</label>
+      <input type="tel" id="phone" placeholder="Ex: 237691234567" />
+    </div>
+    <div class="field">
+      <label>Opérateur</label>
+      <select id="network">
+        <option value="">-- Choisir --</option>
+        {% for op in operators %}
+        <option value="{{ op.code }}">{{ op.name }}</option>
+        {% endfor %}
+        {% if not operators %}
+        <option value="MTN">MTN Mobile Money</option>
+        <option value="ORANGE">Orange Money</option>
+        <option value="AIRTEL">Airtel Money</option>
+        {% endif %}
+      </select>
+    </div>
+    <button id="pay-btn" onclick="initPayment()">Payer maintenant</button>
+  </div>
+
+  <div class="status" id="status-box"></div>
+  <div class="ref">Réf : {{ pr_name }}</div>
+</div>
+
+<script>
+{% if redirect_to_success %}
+window.location.href = {{ success_url | tojson }};
+{% endif %}
+const PR_NAME = {{ pr_name | tojson }};
+const API_BASE = "/api/method/digikuntz_frappe_payment.api.payment";
+let pollTimer = null;
+let pollAttempts = 0;
+const MAX_POLL = 24;
+
+function setStatus(msg, type) {
+  const box = document.getElementById("status-box");
+  box.className = "status " + type;
+  box.innerHTML = msg;
+}
+
+function apiCall(method, args) {
+  const params = new URLSearchParams({ ...args });
+  return fetch("/api/method/" + method, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      "X-Frappe-CSRF-Token": {{ csrf_token | tojson }}
+    },
+    body: params
+  }).then(r => r.json());
+}
+
+function getCookie(name) {
+  const match = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+  return match ? decodeURIComponent(match[2]) : null;
+}
+
+function initPayment() {
+  const phone = document.getElementById("phone").value.trim();
+  const network = document.getElementById("network").value;
+
+  if (!phone) { setStatus("Veuillez entrer votre numéro de téléphone.", "error"); return; }
+  if (!network) { setStatus("Veuillez choisir votre opérateur.", "error"); return; }
+
+  const btn = document.getElementById("pay-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner"></span>Initialisation...';
+  setStatus("Envoi de la demande de paiement...", "info");
+
+  apiCall("digikuntz_frappe_payment.api.payment.initiate_prompt_payment", {
+    pr_name: PR_NAME, phone_number: phone, network: network
+  }).then(r => {
+    const msg = r.message || {};
+    if (!msg.ok) {
+      setStatus(msg.error || "Erreur lors de l'initialisation.", "error");
+      btn.disabled = false;
+      btn.innerHTML = "Payer maintenant";
+      return;
+    }
+    setStatus('<span class="spinner"></span>Demande envoyée. Confirmez sur votre téléphone...', "info");
+    document.getElementById("form-section").style.display = "none";
+    startPolling();
+  }).catch(() => {
+    setStatus("Erreur réseau. Veuillez réessayer.", "error");
+    btn.disabled = false;
+    btn.innerHTML = "Payer maintenant";
+  });
+}
+
+function startPolling() {
+  pollAttempts = 0;
+  pollTimer = setInterval(function() {
+    pollAttempts++;
+    fetch(API_BASE + ".check_payment_status?pr=" + encodeURIComponent(PR_NAME))
+      .then(r => r.json())
+      .then(r => {
+        const status = (r.message || {}).status || "";
+        if (status === "successful") {
+          clearInterval(pollTimer);
+          setStatus("✅ Paiement confirmé ! Merci.", "success");
+          setTimeout(() => { window.location.href = "/payment-success?pr=" + PR_NAME; }, 2000);
+        } else if (status === "failed" || status === "error") {
+          clearInterval(pollTimer);
+          setStatus("❌ Paiement échoué ou annulé.", "error");
+          document.getElementById("form-section").style.display = "block";
+          const btn = document.getElementById("pay-btn");
+          btn.disabled = false;
+          btn.innerHTML = "Réessayer";
+        } else if (pollAttempts >= MAX_POLL) {
+          clearInterval(pollTimer);
+          setStatus("⏱ Délai dépassé. Vérifiez votre téléphone et rechargez la page.", "error");
+        }
+      })
+      .catch(() => { if (pollAttempts >= MAX_POLL) clearInterval(pollTimer); });
+  }, 5000);
+}
+</script>
+</body>
+</html>
